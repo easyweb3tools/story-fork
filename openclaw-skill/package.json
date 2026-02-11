@@ -7,6 +7,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "openai": "^5.20.3",
     "tsx": "^4"
   },
   "devDependencies": {

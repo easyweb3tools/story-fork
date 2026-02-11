@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import LuminousFlow from "@/components/LuminousFlow";
 import PaymentStatus from "@/components/PaymentStatus";
-import { BranchNode } from "@/lib/types";
+import { BranchNode, PaymentRequirements } from "@/lib/types";
+import {
+  connectWallet,
+  disconnectWallet,
+  getActiveWalletAccount,
+  signPayment,
+  type WalletAccount,
+} from "@/lib/wallet";
 
 interface Story {
   id: string;
@@ -27,6 +34,27 @@ export default function StoryPage() {
     status: "idle" | "pending" | "success" | "error";
     message?: string;
   }>({ status: "idle" });
+  const [walletAccount, setWalletAccount] = useState<WalletAccount | null>(null);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const updatePaymentStatus = useCallback(
+    (next: { status: "idle" | "pending" | "success" | "error"; message?: string }) => {
+      if (statusTimerRef.current) {
+        clearTimeout(statusTimerRef.current);
+        statusTimerRef.current = null;
+      }
+      setPaymentStatus(next);
+
+      if (next.status === "success" || next.status === "error") {
+        statusTimerRef.current = setTimeout(() => {
+          setPaymentStatus({ status: "idle" });
+          statusTimerRef.current = null;
+        }, 3000);
+      }
+    },
+    []
+  );
 
   const fetchData = useCallback(async () => {
     try {
@@ -44,6 +72,18 @@ export default function StoryPage() {
       if (branchesRes.ok) {
         const branchTree = await branchesRes.json();
         setBranches(branchTree);
+        const rootIds = (branchTree as BranchNode[])
+          .filter((branch) => branch.depth === 0)
+          .map((branch) => branch.id);
+        if (rootIds.length > 0) {
+          setRevealedBranches((prev) => {
+            const next = new Set(prev);
+            for (const id of rootIds) {
+              next.add(id);
+            }
+            return next;
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to fetch story data:", err);
@@ -54,40 +94,134 @@ export default function StoryPage() {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    getActiveWalletAccount()
+      .then((account) => {
+        if (account) setWalletAccount(account);
+      })
+      .catch(() => {
+        // ignore
+      });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (statusTimerRef.current) {
+        clearTimeout(statusTimerRef.current);
+      }
+    };
+  }, []);
+
+  const ensureWalletConnected = useCallback(
+    async (requiredNetwork?: string): Promise<WalletAccount> => {
+      const network = requiredNetwork || "testnet";
+
+      if (walletAccount) {
+        return walletAccount;
+      }
+
+      setWalletLoading(true);
+      try {
+        const account = await connectWallet(network);
+        setWalletAccount(account);
+        return account;
+      } finally {
+        setWalletLoading(false);
+      }
+    },
+    [walletAccount]
+  );
+
+  const submitPaidRequest = useCallback(
+    async (url: string, init: RequestInit, paymentRequirements: PaymentRequirements) => {
+      const account = await ensureWalletConnected(paymentRequirements.network);
+      updatePaymentStatus({
+        status: "pending",
+        message: "Please sign payment in your wallet...",
+      });
+
+      const signedPayload = await signPayment(paymentRequirements, account);
+      return fetch(url, {
+        ...init,
+        headers: {
+          ...(init.headers || {}),
+          "x-payment": JSON.stringify(signedPayload),
+        },
+      });
+    },
+    [ensureWalletConnected, updatePaymentStatus]
+  );
+
+  const handleConnectWallet = async () => {
+    try {
+      setWalletLoading(true);
+      const account = await connectWallet("testnet");
+      setWalletAccount(account);
+      updatePaymentStatus({
+        status: "success",
+        message: "Wallet connected",
+      });
+    } catch {
+      updatePaymentStatus({
+        status: "error",
+        message: "Wallet connection cancelled or failed",
+      });
+    } finally {
+      setWalletLoading(false);
+    }
+  };
+
+  const handleDisconnectWallet = () => {
+    disconnectWallet();
+    setWalletAccount(null);
+  };
+
+  const shortAddress = walletAccount
+    ? `${walletAccount.address.slice(0, 6)}...${walletAccount.address.slice(-4)}`
+    : null;
+
   const handleRead = async (branchId: string) => {
-    setPaymentStatus({ status: "pending", message: "Requesting content..." });
+    updatePaymentStatus({
+      status: "pending",
+      message: "Requesting content...",
+    });
 
     try {
       const res = await fetch(`/api/branches/${branchId}/read`);
 
       if (res.status === 402) {
-        setPaymentStatus({
-          status: "pending",
-          message: "Payment required. Connect wallet to pay STX.",
-        });
-        // Dev mode fallback: retry (will get free content if SERVER_ADDRESS not set)
-        const retryRes = await fetch(`/api/branches/${branchId}/read`);
+        const data = await res.json();
+        const paymentRequirements = data.paymentRequirements as PaymentRequirements;
+        const retryRes = await submitPaidRequest(
+          `/api/branches/${branchId}/read`,
+          {},
+          paymentRequirements
+        );
         if (retryRes.ok) {
           setRevealedBranches((prev) => new Set([...prev, branchId]));
-          setPaymentStatus({ status: "success", message: "Content unlocked!" });
+          updatePaymentStatus({ status: "success", message: "Content unlocked!" });
           await fetchData();
+        } else {
+          const retryData = await retryRes.json().catch(() => null);
+          updatePaymentStatus({
+            status: "error",
+            message: retryData?.reason || retryData?.error || "Payment verification failed",
+          });
         }
       } else if (res.ok) {
         setRevealedBranches((prev) => new Set([...prev, branchId]));
-        setPaymentStatus({ status: "success", message: "Content unlocked!" });
+        updatePaymentStatus({ status: "success", message: "Content unlocked!" });
         await fetchData();
       } else {
-        setPaymentStatus({ status: "error", message: "Failed to read branch" });
+        updatePaymentStatus({ status: "error", message: "Failed to read branch" });
       }
     } catch {
-      setPaymentStatus({ status: "error", message: "Network error" });
+      updatePaymentStatus({ status: "error", message: "Network error" });
     }
-
-    setTimeout(() => setPaymentStatus({ status: "idle" }), 3000);
   };
 
   const handleVote = async (branchId: string) => {
-    setPaymentStatus({ status: "pending", message: "Processing vote..." });
+    updatePaymentStatus({ status: "pending", message: "Processing vote..." });
 
     try {
       const res = await fetch(`/api/branches/${branchId}/vote`, {
@@ -95,31 +229,35 @@ export default function StoryPage() {
       });
 
       if (res.ok) {
-        setPaymentStatus({
+        updatePaymentStatus({
           status: "success",
           message: "Vote recorded! Canon may have shifted.",
         });
         await fetchData();
       } else if (res.status === 402) {
-        setPaymentStatus({
-          status: "pending",
-          message: "Payment required to vote. Connect wallet.",
-        });
-        const retryRes = await fetch(`/api/branches/${branchId}/vote`, {
-          method: "POST",
-        });
+        const data = await res.json();
+        const paymentRequirements = data.paymentRequirements as PaymentRequirements;
+        const retryRes = await submitPaidRequest(
+          `/api/branches/${branchId}/vote`,
+          { method: "POST" },
+          paymentRequirements
+        );
         if (retryRes.ok) {
-          setPaymentStatus({ status: "success", message: "Vote recorded!" });
+          updatePaymentStatus({ status: "success", message: "Vote recorded!" });
           await fetchData();
+        } else {
+          const retryData = await retryRes.json().catch(() => null);
+          updatePaymentStatus({
+            status: "error",
+            message: retryData?.reason || retryData?.error || "Payment verification failed",
+          });
         }
       } else {
-        setPaymentStatus({ status: "error", message: "Vote failed" });
+        updatePaymentStatus({ status: "error", message: "Vote failed" });
       }
     } catch {
-      setPaymentStatus({ status: "error", message: "Network error" });
+      updatePaymentStatus({ status: "error", message: "Network error" });
     }
-
-    setTimeout(() => setPaymentStatus({ status: "idle" }), 3000);
   };
 
   if (!story) {
@@ -144,6 +282,24 @@ export default function StoryPage() {
           {story.title}
         </h1>
         <p className="text-[#86868B] leading-relaxed">{story.description}</p>
+        <div className="mt-4">
+          {walletAccount ? (
+            <button
+              onClick={handleDisconnectWallet}
+              className="px-3 py-1.5 rounded-xl border border-[#D2D2D7] text-xs text-[#1D1D1F] hover:bg-[#F5F5F7] transition-colors"
+            >
+              Wallet: {shortAddress} (Disconnect)
+            </button>
+          ) : (
+            <button
+              onClick={handleConnectWallet}
+              disabled={walletLoading}
+              className="px-3 py-1.5 rounded-xl bg-[#0071E3] text-white text-xs font-medium hover:bg-[#0077ED] disabled:opacity-60 transition-colors"
+            >
+              {walletLoading ? "Connecting..." : "Connect STX Wallet"}
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-3 mt-4">
           <span className="px-2.5 py-1 bg-[#F5F5F7] text-[#86868B] rounded-full text-xs font-medium">
             {story.genre}

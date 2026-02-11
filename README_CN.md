@@ -29,7 +29,7 @@ Story-Fork 构建在 [x402-stacks](https://docs.x402stacks.xyz/) 开放支付标
 - **分支叙事树** — 故事以树形结构组织，每个深度层级可有多个分支，通过交互式流程图可视化展示
 - **x402 付费墙集成** — 阅读和投票操作均通过 HTTP 402 微支付（STX）进行门控
 - **动态正史系统** — 同级分支中资金最高的自动成为 Canon；随着投票累积，Canon 状态实时变化
-- **AI 故事代理** — 基于 OpenClaw 的 AI 代理，监控故事并在叶节点自动生成新的叙事分支，保持故事持续生长
+- **AI 故事代理（OpenClaw）** — 一个自主运行的 [OpenClaw](https://github.com/openclaw) AI 代理，定时通过 Story-Fork 的 REST API 拉取故事数据，分析正史路径和投票结果，调用 LLM 生成新的叙事分支，再通过 API 回推 —— 形成一个 AI 驱动的闭环叙事系统
 - **开发模式** — 未配置 `SERVER_ADDRESS` 时，所有内容免费访问，便于本地开发和测试
 - **Docker 部署** — 通过 Docker Compose 实现全栈部署（PostgreSQL + Next.js 应用 + AI 代理）
 
@@ -136,6 +136,70 @@ story-fork/
 
 这意味着正史是动态的 —— 一个资金充足的"黑马"分支可以随时超越当前的正史。
 
+### AI 故事代理 — OpenClaw 闭环
+
+AI 代理是一个 [OpenClaw](https://github.com/openclaw) Skill，作为独立服务与 Story-Fork 服务器并行运行。它不直接内嵌 LLM 逻辑，而是作为 Story-Fork REST API 与 OpenClaw LLM 能力之间的桥梁，构成自主叙事闭环：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   OpenClaw 代理（Skill）                      │
+│                                                             │
+│  ┌──────────┐    ┌───────────────┐    ┌──────────────────┐  │
+│  │ 1. 拉取  │───>│ 2. 分析       │───>│ 3. 生成          │  │
+│  │          │    │               │    │                  │  │
+│  │ 通过 API │    │ 查找叶节点    │    │ OpenClaw 调用    │  │
+│  │ 拉取所有 │    │ 读取正史路径  │    │ LLM 为每个叶     │  │
+│  │ 故事和   │    │ 及投票数据    │    │ 节点生成 2-3     │  │
+│  │ 分支树   │    │ 决定在哪里    │    │ 个新分支         │  │
+│  │          │    │ 继续生长      │    │                  │  │
+│  └──────────┘    └───────────────┘    └────────┬─────────┘  │
+│       ▲                                        │            │
+│       │            ┌──────────────┐             │            │
+│       └────────────│ 4. 推送      │<────────────┘            │
+│                    │              │                          │
+│                    │ 通过 API     │                          │
+│                    │ 回写新分支   │                          │
+│                    └──────────────┘                          │
+└─────────────────────────────────────────────────────────────┘
+         │                                    ▲
+         │  GET /api/stories                  │  POST /api/branches
+         │  GET /api/branches?storyId=        │
+         ▼                                    │
+┌─────────────────────────────────────────────────────────────┐
+│                   Story-Fork 服务器                           │
+│                                                             │
+│  Stories ◄──── Branches ◄──── Payments                      │
+│                  │                                          │
+│                  ├── isCanon（动态，由投票驱动）               │
+│                  ├── totalFunding（累计 STX）                 │
+│                  └── voteCount                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**代理周期（每 10 分钟）：**
+
+1. **拉取** — 调用 `GET /api/stories?status=active` 获取所有活跃故事，再调用 `GET /api/branches?storyId=` 获取完整分支树（包含每个节点的 `isCanon`、`totalFunding`、`voteCount`）
+2. **分析** — 遍历树结构查找叶节点（无子节点的分支）。追踪正史路径（从根到叶的 `isCanon=true` 分支）以理解读者投票选出的"官方"故事线。跳过深度 ≥ 4 的叶节点（故事结局）
+3. **生成** — OpenClaw 的 LLM 为每个叶节点生成 2-3 个新分支选项，遵循 `SKILL.md` 中的叙事指南（第三人称、过去时、200-500 字、悬念结尾、风格多样）。LLM 接收完整的正史上下文，确保新分支自然延续社区投票选择的方向
+4. **推送** — 为每个生成的分支调用 `POST /api/branches`，提供 `storyId`、`parentId`、`title`、`content` 和 `summary`。服务器自动计算 `depth` 和 `orderIndex`
+
+这形成了一个**反馈循环**：读者投票 → 正史变更 → 代理读取新正史 → 代理生成延续社区选择方向的分支 → 读者再次投票。故事在群体经济和 AI 创造力的双重驱动下有机生长。
+
+**OpenClaw Skill 结构：**
+
+```
+openclaw-skill/
+├── src/
+│   ├── tools.ts                   # 主循环：拉取 → 分析 → 生成 → 推送
+│   ├── server-api.ts              # 封装 Story-Fork REST API 的 HTTP 客户端
+│   └── types.ts                   # Story 和 Branch TypeScript 类型
+├── skills/story-fork/SKILL.md    # LLM 叙事提示词与写作指南
+├── openclaw.plugin.json           # OpenClaw 插件清单
+├── entrypoint.sh                  # Docker 入口：初始化 LLM 配置、等待服务器就绪、启动代理
+├── Dockerfile                     # 代理容器镜像
+└── package.json
+```
+
 ## 快速开始
 
 ### 前置要求
@@ -198,6 +262,9 @@ docker compose up --build
 | `FACILITATOR_URL` | x402 facilitator 端点 | 否（默认 `https://facilitator.stacksx402.com`） |
 | `NETWORK` | Stacks 网络（`testnet` 或 `mainnet`） | 否（默认 `testnet`） |
 | `NEXT_PUBLIC_APP_URL` | 应用公开 URL | 否 |
+| `ANYROUTER_BASE_URL` | AI 代理使用的 OpenAI 兼容网关地址 | 否（默认 `https://anyrouter.top`） |
+| `ANYROUTER_API_KEY` | AnyRouter 提供方 API Key | 否（默认 `sk-free`） |
+| `ANYROUTER_MODEL_ID` | AI 代理使用的模型 ID | 否（默认 `claude-opus-4-5-20251101`） |
 
 ## API 参考
 
@@ -222,4 +289,3 @@ MIT
 ---
 
 为 [x402 Stacks Challenge](https://dorahacks.io/hackathon/x402-stacks/detail) 黑客松而构建。
-

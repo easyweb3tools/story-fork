@@ -29,7 +29,7 @@ Both **read** and **vote** actions are gated behind x402 paywalls, each with con
 - **Branching Narrative Tree** — Stories are structured as trees with multiple branches at each depth level, visualized as an interactive flow diagram
 - **x402 Paywall Integration** — Read and vote actions are gated behind HTTP 402 micro-payments using STX on the Stacks blockchain
 - **Dynamic Canon System** — The highest-funded branch among siblings automatically becomes Canon; Canon status shifts in real-time as votes accumulate
-- **AI Story Agent** — An OpenClaw-based agent that monitors stories and generates new narrative branches at leaf nodes, keeping stories alive and growing
+- **AI Story Agent (OpenClaw)** — An autonomous [OpenClaw](https://github.com/openclaw) agent that periodically fetches story data via Story-Fork's REST API, analyzes the Canon path and voting results, generates new narrative branches using LLM, and pushes them back through the API — forming a closed-loop AI-driven storytelling cycle
 - **Dev Mode** — When no `SERVER_ADDRESS` is configured, all content is freely accessible for local development and testing
 - **Docker Deployment** — Full-stack deployment with Docker Compose (PostgreSQL + Next.js app + AI agent)
 
@@ -136,6 +136,71 @@ When a vote is cast, the server:
 
 This means Canon is dynamic — a well-funded underdog branch can overtake the current Canon at any time.
 
+### AI Story Agent — The OpenClaw Loop
+
+The AI agent is an [OpenClaw](https://github.com/openclaw) skill that runs as an independent service alongside the Story-Fork server. It does **not** embed any LLM logic directly — instead it acts as a bridge between the Story-Fork REST API and OpenClaw's LLM capabilities, forming an autonomous storytelling loop:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   OpenClaw Agent (Skill)                     │
+│                                                             │
+│  ┌──────────┐    ┌───────────────┐    ┌──────────────────┐  │
+│  │ 1. FETCH │───>│ 2. ANALYZE    │───>│ 3. GENERATE      │  │
+│  │          │    │               │    │                  │  │
+│  │ Pull all │    │ Find leaves   │    │ OpenClaw invokes │  │
+│  │ stories  │    │ Read Canon    │    │ LLM to create    │  │
+│  │ & branch │    │ path & votes  │    │ 2-3 new branches │  │
+│  │ trees    │    │ Decide where  │    │ per leaf node    │  │
+│  │ via API  │    │ to grow       │    │                  │  │
+│  └──────────┘    └───────────────┘    └────────┬─────────┘  │
+│       ▲                                        │            │
+│       │            ┌──────────────┐             │            │
+│       └────────────│ 4. PUSH      │<────────────┘            │
+│                    │              │                          │
+│                    │ POST new     │                          │
+│                    │ branches     │                          │
+│                    │ back via API │                          │
+│                    └──────────────┘                          │
+└─────────────────────────────────────────────────────────────┘
+         │                                    ▲
+         │  GET /api/stories                  │  POST /api/branches
+         │  GET /api/branches?storyId=        │
+         ▼                                    │
+┌─────────────────────────────────────────────────────────────┐
+│                   Story-Fork Server                          │
+│                                                             │
+│  Stories ◄──── Branches ◄──── Payments                      │
+│                  │                                          │
+│                  ├── isCanon (dynamic, vote-driven)          │
+│                  ├── totalFunding (accumulated STX)          │
+│                  └── voteCount                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Agent Cycle (every 10 minutes):**
+
+1. **Fetch** — Calls `GET /api/stories?status=active` to retrieve all active stories, then `GET /api/branches?storyId=` for each story to get the full branch tree (including `isCanon`, `totalFunding`, `voteCount` for every node)
+2. **Analyze** — Walks the tree to find leaf nodes (branches with no children). Traces the Canon path (`isCanon=true` from root to leaf) to understand the "official" storyline readers have voted for. Skips leaves at depth ≥ 4 (story conclusion)
+3. **Generate** — OpenClaw's LLM generates 2–3 new branch options for each leaf, following the narrative guidelines in `SKILL.md` (third person, past tense, 200–500 words, cliffhanger endings, varied tones). The LLM receives the full Canon context so new branches continue naturally from where the community has steered the story
+4. **Push** — Calls `POST /api/branches` for each generated branch, providing `storyId`, `parentId`, `title`, `content`, and `summary`. The server calculates `depth` and `orderIndex` automatically
+
+This creates a **feedback loop**: readers vote → Canon shifts → agent reads new Canon → agent generates branches that continue the community-chosen direction → readers vote again. The story grows organically, driven by both crowd economics and AI creativity.
+
+**OpenClaw Skill Structure:**
+
+```
+openclaw-skill/
+├── src/
+│   ├── tools.ts                   # Main loop: fetch → analyze → generate → push
+│   ├── server-api.ts              # HTTP client wrapping Story-Fork REST API
+│   └── types.ts                   # Story & Branch TypeScript types
+├── skills/story-fork/SKILL.md    # LLM prompt & narrative guidelines
+├── openclaw.plugin.json           # OpenClaw plugin manifest
+├── entrypoint.sh                  # Docker entrypoint: init LLM config, wait for server, start agent
+├── Dockerfile                     # Agent container image
+└── package.json
+```
+
 ## Getting Started
 
 ### Prerequisites
@@ -198,6 +263,9 @@ docker compose up --build
 | `FACILITATOR_URL` | x402 facilitator endpoint | No (defaults to `https://facilitator.stacksx402.com`) |
 | `NETWORK` | Stacks network (`testnet` or `mainnet`) | No (defaults to `testnet`) |
 | `NEXT_PUBLIC_APP_URL` | Public app URL | No |
+| `ANYROUTER_BASE_URL` | OpenAI-compatible endpoint for AI agent | No (defaults to `https://anyrouter.top`) |
+| `ANYROUTER_API_KEY` | API key for AnyRouter provider | No (defaults to `sk-free`) |
+| `ANYROUTER_MODEL_ID` | Model ID used by AI agent | No (defaults to `claude-opus-4-5-20251101`) |
 
 ## API Reference
 

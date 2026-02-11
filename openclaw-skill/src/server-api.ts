@@ -1,14 +1,18 @@
 import type { Story, Branch } from "./types.js";
 
 const BASE_URL = process.env.STORY_FORK_SERVER_URL || "http://localhost:3000";
+const API_KEY = process.env.STORY_FORK_API_KEY || "";
 
 async function apiFetch(path: string, options?: RequestInit) {
+  const headers = new Headers(options?.headers);
+  headers.set("Content-Type", "application/json");
+  if (API_KEY) {
+    headers.set("x-api-key", API_KEY);
+  }
+
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
+    headers,
   });
   if (!res.ok) {
     const text = await res.text();

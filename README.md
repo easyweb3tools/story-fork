@@ -220,6 +220,8 @@ cd story-fork
 cp .env.example .env
 # Edit .env — set SERVER_ADDRESS to your STX wallet for x402 payments
 # Leave SERVER_ADDRESS empty for dev mode (free access)
+# Optional but recommended: set STORY_FORK_API_KEY to protect write APIs
+# If set, use the same STORY_FORK_API_KEY value for both app and openclaw
 
 # 3. Start PostgreSQL
 docker compose up db -d
@@ -263,9 +265,20 @@ docker compose up --build
 | `FACILITATOR_URL` | x402 facilitator endpoint | No (defaults to `https://facilitator.stacksx402.com`) |
 | `NETWORK` | Stacks network (`testnet` or `mainnet`) | No (defaults to `testnet`) |
 | `NEXT_PUBLIC_APP_URL` | Public app URL | No |
+| `STORY_FORK_API_KEY` | Shared write API key for app + OpenClaw (`/api/stories`, `/api/branches`) | No (recommended in non-dev) |
 | `ANYROUTER_BASE_URL` | OpenAI-compatible endpoint for AI agent | No (defaults to `https://anyrouter.top`) |
 | `ANYROUTER_API_KEY` | API key for AnyRouter provider | No (defaults to `sk-free`) |
 | `ANYROUTER_MODEL_ID` | Model ID used by AI agent | No (defaults to `claude-opus-4-5-20251101`) |
+
+When `STORY_FORK_API_KEY` is set, configure the same value in both services:
+
+```env
+# app (.env)
+STORY_FORK_API_KEY=your-shared-secret
+
+# openclaw service env (docker-compose or shell)
+STORY_FORK_API_KEY=your-shared-secret
+```
 
 ## API Reference
 

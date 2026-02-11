@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { createPaymentRequired, verifyPayment, isPaymentEnabled } from "@/lib/x402";
 
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "P2002"
+  );
+}
+
 // POST /api/branches/[branchId]/vote — vote for a branch (x402 paywall)
 export async function POST(
   req: NextRequest,
@@ -61,24 +70,34 @@ export async function POST(
   }
 
   // Record payment and update branch
-  await prisma.$transaction([
-    prisma.payment.create({
-      data: {
-        branchId,
-        type: "vote",
-        amount: BigInt(branch.votePrice),
-        payerAddress: result.payer || "unknown",
-        txHash: result.txHash || null,
-      },
-    }),
-    prisma.branch.update({
-      where: { id: branchId },
-      data: {
-        voteCount: { increment: 1 },
-        totalFunding: { increment: BigInt(branch.votePrice) },
-      },
-    }),
-  ]);
+  try {
+    await prisma.$transaction([
+      prisma.payment.create({
+        data: {
+          branchId,
+          type: "vote",
+          amount: BigInt(branch.votePrice),
+          payerAddress: result.payer || "unknown",
+          txHash: result.txHash || null,
+        },
+      }),
+      prisma.branch.update({
+        where: { id: branchId },
+        data: {
+          voteCount: { increment: 1 },
+          totalFunding: { increment: BigInt(branch.votePrice) },
+        },
+      }),
+    ]);
+  } catch (error) {
+    if (result.txHash && isUniqueConstraintError(error)) {
+      return NextResponse.json(
+        { error: "Duplicate payment transaction" },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
 
   // Recalculate canon status among siblings
   await recalculateCanon(branch.storyId, branch.parentId);

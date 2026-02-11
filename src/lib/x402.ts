@@ -5,6 +5,7 @@ const FACILITATOR_URL =
   process.env.FACILITATOR_URL || "https://facilitator.stacksx402.com";
 const SERVER_ADDRESS = process.env.SERVER_ADDRESS || "";
 const NETWORK = process.env.NETWORK || "testnet";
+const FACILITATOR_TIMEOUT_MS = Number(process.env.FACILITATOR_TIMEOUT_MS || "8000");
 
 // STX asset identifier for testnet/mainnet
 const STX_ASSET = "STX";
@@ -76,15 +77,27 @@ export async function verifyPayment(
       maxTimeoutSeconds: 60,
     };
 
+    const callFacilitator = async (path: string) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), FACILITATOR_TIMEOUT_MS);
+
+      try {
+        return await fetch(`${FACILITATOR_URL}${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentPayload,
+            paymentRequirements: requirements,
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
     // Verify with facilitator
-    const verifyRes = await fetch(`${FACILITATOR_URL}/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        paymentPayload,
-        paymentRequirements: requirements,
-      }),
-    });
+    const verifyRes = await callFacilitator("/verify");
 
     if (!verifyRes.ok) {
       return { valid: false, error: "Facilitator verification failed" };
@@ -100,14 +113,7 @@ export async function verifyPayment(
     }
 
     // Settle the payment
-    const settleRes = await fetch(`${FACILITATOR_URL}/settle`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        paymentPayload,
-        paymentRequirements: requirements,
-      }),
-    });
+    const settleRes = await callFacilitator("/settle");
 
     if (!settleRes.ok) {
       return { valid: false, error: "Settlement failed" };
@@ -121,9 +127,15 @@ export async function verifyPayment(
       txHash: settleData.transaction,
     };
   } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      return {
+        valid: false,
+        error: "Facilitator timeout",
+      };
+    }
     return {
       valid: false,
-      error: `Payment processing error: ${err instanceof Error ? err.message : "Unknown"}`,
+      error: "Payment processing error",
     };
   }
 }

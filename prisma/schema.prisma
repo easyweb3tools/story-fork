@@ -59,7 +59,7 @@ model Payment {
   type          String
   amount        BigInt
   payerAddress  String
-  txHash        String?
+  txHash        String?   @unique
   network       String    @default("testnet")
   createdAt     DateTime  @default(now())
 

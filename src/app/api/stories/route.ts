@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
+import { requireWriteApiKey } from "@/lib/auth";
 
 // GET /api/stories — list all stories
 export async function GET(req: NextRequest) {
@@ -29,6 +30,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/stories — create a new story with root branch
 export async function POST(req: NextRequest) {
+  const authError = requireWriteApiKey(req);
+  if (authError) return authError;
+
   const body = await req.json();
   const { title, description, genre, coverImage, rootBranch } = body;
 

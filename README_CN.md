@@ -219,6 +219,8 @@ cd story-fork
 cp .env.example .env
 # 编辑 .env — 设置 SERVER_ADDRESS 为你的 STX 钱包地址以启用 x402 支付
 # 留空 SERVER_ADDRESS 即为开发模式（免费访问）
+# 可选但推荐：设置 STORY_FORK_API_KEY 保护写接口
+# 若设置，请在 app 和 openclaw 两侧使用同一个 STORY_FORK_API_KEY
 
 # 3. 启动 PostgreSQL
 docker compose up db -d
@@ -262,9 +264,20 @@ docker compose up --build
 | `FACILITATOR_URL` | x402 facilitator 端点 | 否（默认 `https://facilitator.stacksx402.com`） |
 | `NETWORK` | Stacks 网络（`testnet` 或 `mainnet`） | 否（默认 `testnet`） |
 | `NEXT_PUBLIC_APP_URL` | 应用公开 URL | 否 |
+| `STORY_FORK_API_KEY` | app + OpenClaw 共用的写接口 API Key（`/api/stories`, `/api/branches`） | 否（生产推荐） |
 | `ANYROUTER_BASE_URL` | AI 代理使用的 OpenAI 兼容网关地址 | 否（默认 `https://anyrouter.top`） |
 | `ANYROUTER_API_KEY` | AnyRouter 提供方 API Key | 否（默认 `sk-free`） |
 | `ANYROUTER_MODEL_ID` | AI 代理使用的模型 ID | 否（默认 `claude-opus-4-5-20251101`） |
+
+当设置 `STORY_FORK_API_KEY` 时，`app` 和 `openclaw` 必须配置同一个值：
+
+```env
+# app (.env)
+STORY_FORK_API_KEY=your-shared-secret
+
+# openclaw 服务环境变量（docker-compose 或 shell）
+STORY_FORK_API_KEY=your-shared-secret
+```
 
 ## API 参考
 

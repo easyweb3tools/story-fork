@@ -256,7 +256,32 @@ Generate ${branchCount} distinct next branches. Return JSON array only:
     ],
   });
 
-  const output = completion.choices[0]?.message?.content || "";
+  const firstChoice = completion.choices?.[0];
+  const messageContent = firstChoice?.message?.content;
+  const output =
+    typeof messageContent === "string"
+      ? messageContent
+      : Array.isArray(messageContent)
+        ? messageContent
+            .map((part) =>
+              typeof part === "string"
+                ? part
+                : typeof part === "object" &&
+                    part !== null &&
+                    "text" in part &&
+                    typeof part.text === "string"
+                  ? part.text
+                  : ""
+            )
+            .join("")
+        : "";
+
+  if (!output.trim()) {
+    throw new Error(
+      `LLM returned empty/invalid content (choices=${completion.choices?.length ?? 0}, finishReason=${firstChoice?.finish_reason ?? "unknown"})`
+    );
+  }
+
   console.log(`[LLM] Raw response for "${leaf.title}":\n${trimText(output, 2000)}`);
 
   const parsed = extractJsonArray(output);

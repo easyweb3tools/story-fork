@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
+import { requireWriteApiKey } from "@/lib/auth";
 
 // GET /api/branches?storyId=xxx — get branches for a story
 export async function GET(req: NextRequest) {
@@ -45,6 +46,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/branches — create a new branch
 export async function POST(req: NextRequest) {
+  const authError = requireWriteApiKey(req);
+  if (authError) return authError;
+
   const body = await req.json();
   const { storyId, parentId, title, content, summary, generatedBy, prompt } = body;
 
@@ -62,6 +66,13 @@ export async function POST(req: NextRequest) {
 
   if (!parent) {
     return NextResponse.json({ error: "Parent branch not found" }, { status: 404 });
+  }
+
+  if (parent.storyId !== storyId) {
+    return NextResponse.json(
+      { error: "Parent branch does not belong to the provided storyId" },
+      { status: 400 }
+    );
   }
 
   // Count existing siblings for orderIndex

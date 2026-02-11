@@ -1,0 +1,7 @@
+{
+  "name": "story-fork-agent",
+  "version": "1.0.0",
+  "description": "OpenClaw AI agent for creating branching narrative content on Story-Fork",
+  "skills": ["skills/story-fork/SKILL.md"],
+  "tools": ["src/tools.ts"]
+}

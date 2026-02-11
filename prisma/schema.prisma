@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Story {
+  id          String    @id @default(uuid())
+  title       String
+  description String
+  genre       String    @default("fantasy")
+  coverImage  String?
+  status      String    @default("active")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  branches    Branch[]
+}
+
+model Branch {
+  id            String    @id @default(uuid())
+  storyId       String
+  story         Story     @relation(fields: [storyId], references: [id])
+  parentId      String?
+  parent        Branch?   @relation("BranchTree", fields: [parentId], references: [id])
+  children      Branch[]  @relation("BranchTree")
+
+  title         String
+  content       String
+  summary       String?
+
+  depth         Int       @default(0)
+  orderIndex    Int       @default(0)
+
+  readPrice     Int       @default(10)
+  votePrice     Int       @default(100)
+  totalFunding  BigInt    @default(0)
+  readCount     Int       @default(0)
+  voteCount     Int       @default(0)
+  isCanon       Boolean   @default(false)
+
+  generatedBy   String?
+  prompt        String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  payments      Payment[]
+
+  @@index([storyId, parentId])
+  @@index([storyId, isCanon])
+}
+
+model Payment {
+  id            String    @id @default(uuid())
+  branchId      String
+  branch        Branch    @relation(fields: [branchId], references: [id])
+  type          String
+  amount        BigInt
+  payerAddress  String
+  txHash        String?
+  network       String    @default("testnet")
+  createdAt     DateTime  @default(now())
+
+  @@index([branchId])
+}

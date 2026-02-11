@@ -1,0 +1,16 @@
+{
+  "name": "story-fork-agent",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/tools.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "tsx": "^4"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}

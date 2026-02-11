@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+:root {
+  --background: #FFFFFF;
+  --foreground: #1D1D1F;
+  --apple-bg: #F5F5F7;
+  --apple-text: #1D1D1F;
+  --apple-secondary: #86868B;
+  --apple-tertiary: #AEAEB2;
+  --apple-separator: #D2D2D7;
+  --apple-blue: #0071E3;
+  --apple-purple: #AF52DE;
+  --apple-green: #34C759;
+  --apple-red: #FF3B30;
+  --apple-orange: #FF9500;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Apple-style selection */
+::selection {
+  background: rgba(0, 113, 227, 0.15);
+}

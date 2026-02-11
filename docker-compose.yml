@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: storyfork
+      POSTGRES_PASSWORD: storyfork
+      POSTGRES_DB: storyfork
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U storyfork"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgres://storyfork:storyfork@db:5432/storyfork
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NETWORK: testnet
+      SERVER_ADDRESS: ${SERVER_ADDRESS:-}
+      FACILITATOR_URL: https://facilitator.stacksx402.com
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    command: >
+      sh -c "npx prisma db push --skip-generate && npm start"
+
+  openclaw:
+    build: ./openclaw-skill
+    environment:
+      STORY_FORK_SERVER_URL: http://app:3000
+      STORY_FORK_API_KEY: ${STORY_FORK_API_KEY:-}
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

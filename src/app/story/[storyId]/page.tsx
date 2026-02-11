@@ -161,10 +161,14 @@ export default function StoryPage() {
         status: "success",
         message: "Wallet connected",
       });
-    } catch {
+    } catch (error) {
+      const detail =
+        error instanceof Error && error.message
+          ? error.message
+          : "Wallet connection cancelled or failed";
       updatePaymentStatus({
         status: "error",
-        message: "Wallet connection cancelled or failed",
+        message: detail,
       });
     } finally {
       setWalletLoading(false);

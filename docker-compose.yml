@@ -30,7 +30,7 @@ services:
       - "3000:3000"
     restart: unless-stopped
     command: >
-      sh -c "npx prisma db push --skip-generate && npm start"
+      sh -c "npx prisma db push --skip-generate --accept-data-loss && npm start"
 
   openclaw:
     build: ./openclaw-skill

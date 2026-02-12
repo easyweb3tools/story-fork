@@ -12,6 +12,7 @@ interface BranchNodeProps {
   onVote: (branchId: string) => void;
   isRevealed: boolean;
   locale: Locale;
+  directionLabel?: string | null;
 }
 
 export default function BranchNode({
@@ -21,6 +22,7 @@ export default function BranchNode({
   onVote,
   isRevealed,
   locale,
+  directionLabel,
 }: BranchNodeProps) {
   const [expanded, setExpanded] = useState(false);
   const funding = Number(node.totalFunding);
@@ -52,6 +54,9 @@ export default function BranchNode({
       <h3 className="text-sm font-semibold text-[#1D1D1F] mb-1.5 truncate tracking-tight">
         {title}
       </h3>
+      {directionLabel && (
+        <p className="text-[11px] text-[#86868B] mb-2">{directionLabel}</p>
+      )}
 
       {/* Summary or locked state */}
       {isRevealed ? (

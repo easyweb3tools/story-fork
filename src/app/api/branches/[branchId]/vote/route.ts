@@ -51,7 +51,7 @@ export async function POST(
     return createPaymentRequired(
       `/api/branches/${branchId}/vote`,
       branch.votePrice,
-      `Vote for "${branch.title}" - ${branch.votePrice} microSTX`
+      `Vote for branch - ${branch.votePrice} microSTX`
     );
   }
 
@@ -60,7 +60,7 @@ export async function POST(
     req,
     branch.votePrice,
     `/api/branches/${branchId}/vote`,
-    `Vote for "${branch.title}" - ${branch.votePrice} microSTX`
+    `Vote for branch - ${branch.votePrice} microSTX`
   );
 
   if (!result.valid) {

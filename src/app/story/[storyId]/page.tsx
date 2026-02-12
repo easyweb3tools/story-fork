@@ -24,16 +24,35 @@ interface Story {
   status: string;
 }
 
+interface VoteHistoryItem {
+  id: string;
+  branchId: string;
+  amount: string;
+  payerAddress: string;
+  txHash: string | null;
+  network: string;
+  createdAt: string;
+  branch: {
+    id: string;
+    title: string;
+    titleEn: string | null;
+  };
+}
+
 const STORAGE_KEY = "story_fork_locale";
+type Direction = "freedom" | "power";
 
 function encodePaymentHeaderValue(payload: unknown): string {
-  const json = JSON.stringify(payload);
-  const bytes = new TextEncoder().encode(json);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
+  return JSON.stringify(payload);
+}
+
+function detectDirectionFromText(text: string): Direction | null {
+  const normalized = text.toLowerCase();
+  const freedomKeywords = ["焚", "自由", "无主", "chaos", "freedom", "burn"];
+  const powerKeywords = ["主权", "接管", "控制", "order", "power", "keep"];
+  if (freedomKeywords.some((k) => normalized.includes(k))) return "freedom";
+  if (powerKeywords.some((k) => normalized.includes(k))) return "power";
+  return null;
 }
 
 export default function StoryPage() {
@@ -52,7 +71,57 @@ export default function StoryPage() {
   const [walletAccount, setWalletAccount] = useState<WalletAccount | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
   const [locale, setLocale] = useState<Locale>("zh");
+  const [voteHistory, setVoteHistory] = useState<VoteHistoryItem[]>([]);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const directionLabel = useCallback(
+    (direction: Direction) => {
+      if (locale === "zh") {
+        return direction === "freedom" ? "焚钥自由方向" : "主权接管方向";
+      }
+      return direction === "freedom" ? "Burn-Key Freedom" : "Sovereign Takeover";
+    },
+    [locale]
+  );
+
+  const formatTxHash = useCallback((txHash: string) => {
+    return txHash.startsWith("0x") ? txHash : `0x${txHash}`;
+  }, []);
+
+  const txExplorerUrl = useCallback((txHash: string, network: string) => {
+    const normalized = network.toLowerCase();
+    const isMainnet = normalized.includes("main") || normalized === "stacks:1";
+    const chain = isMainnet ? "" : "?chain=testnet";
+    return `https://explorer.hiro.so/txid/${formatTxHash(txHash)}${chain}`;
+  }, [formatTxHash]);
+
+  const shortenAddress = useCallback((value: string) => {
+    if (!value || value.length < 12) return value;
+    return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  }, []);
+
+  const directionByBranchId = useCallback((tree: BranchNode[]) => {
+    const map = new Map<string, Direction>();
+    const assign = (node: BranchNode, direction: Direction) => {
+      map.set(node.id, direction);
+      for (const child of node.children || []) assign(child, direction);
+    };
+    const depthOne: BranchNode[] = [];
+    const walk = (items: BranchNode[]) => {
+      for (const item of items) {
+        if (item.depth === 1) depthOne.push(item);
+        if (item.children?.length) walk(item.children);
+      }
+    };
+    walk(tree);
+    depthOne.sort((a, b) => a.orderIndex - b.orderIndex).forEach((node, idx) => {
+      const text = `${node.title || ""} ${node.titleEn || ""} ${node.summary || ""} ${
+        node.summaryEn || ""
+      }`;
+      const detected = detectDirectionFromText(text);
+      assign(node, detected || (idx % 2 === 0 ? "freedom" : "power"));
+    });
+    return map;
+  }, []);
 
   const updatePaymentStatus = useCallback(
     (next: { status: "idle" | "pending" | "success" | "error"; message?: string }) => {
@@ -101,6 +170,9 @@ export default function StoryPage() {
         fetch("/api/stories"),
         fetch(`/api/branches?storyId=${storyId}`),
       ]);
+      const voteHistoryRes = await fetch(
+        `/api/payments?storyId=${storyId}&type=vote&limit=20`
+      );
 
       if (storiesRes.ok) {
         const stories = await storiesRes.json();
@@ -123,6 +195,11 @@ export default function StoryPage() {
             return next;
           });
         }
+      }
+
+      if (voteHistoryRes.ok) {
+        const history = (await voteHistoryRes.json()) as VoteHistoryItem[];
+        setVoteHistory(history);
       }
     } catch (err) {
       console.error("Failed to fetch story data:", err);
@@ -271,7 +348,18 @@ export default function StoryPage() {
   };
 
   const handleVote = async (branchId: string) => {
-    updatePaymentStatus({ status: "pending", message: "Processing vote..." });
+    const directionMap = directionByBranchId(branches);
+    const direction = directionMap.get(branchId);
+    updatePaymentStatus({
+      status: "pending",
+      message: direction
+        ? locale === "zh"
+          ? `正在为「${directionLabel(direction)}」投票...`
+          : `Voting for "${directionLabel(direction)}"...`
+        : locale === "zh"
+          ? "正在处理投票..."
+          : "Processing vote...",
+    });
 
     try {
       const res = await fetch(`/api/branches/${branchId}/vote`, {
@@ -428,24 +516,111 @@ export default function StoryPage() {
         </div>
       </div>
 
-      {/* Flow Tree */}
-      {branches.length > 0 ? (
-        <LuminousFlow
-          branches={branches}
-          onRead={handleRead}
-          onVote={handleVote}
-          revealedBranches={revealedBranches}
-          locale={locale}
-        />
-      ) : (
-        <div className="text-center py-24 text-[#AEAEB2]">
+      <section className="mt-6 mb-6 rounded-2xl border border-[#E8E8ED] bg-white p-4">
+        <h3 className="text-sm font-semibold text-[#1D1D1F] mb-2">
+          {locale === "zh" ? "分叉方向说明" : "Fork Direction Guide"}
+        </h3>
+        <div className="grid gap-2 text-xs text-[#86868B]">
           <p>
+            <span className="font-medium text-[#1D1D1F]">
+              {locale === "zh" ? "焚钥自由方向：" : "Burn-Key Freedom:"}
+            </span>{" "}
             {locale === "zh"
-              ? "暂无分支，AI 代理稍后会继续创作。"
-              : "No branches yet. The AI agent will create them soon."}
+              ? "彻底去中心化与无主秩序，宁可放弃财富也不让任何人控制创世私钥。"
+              : "Radical decentralization and ownerless order, sacrificing wealth to prevent key capture."}
+          </p>
+          <p>
+            <span className="font-medium text-[#1D1D1F]">
+              {locale === "zh" ? "主权接管方向：" : "Sovereign Takeover:"}
+            </span>{" "}
+            {locale === "zh"
+              ? "以控制与效率换取新秩序，接管私钥并重塑权力与财富结构。"
+              : "Trade freedom for control and efficiency by seizing the key to reshape power and wealth."}
           </p>
         </div>
-      )}
+      </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] gap-8 items-start">
+        <section>
+          {/* Flow Tree */}
+          {branches.length > 0 ? (
+            <LuminousFlow
+              branches={branches}
+              onRead={handleRead}
+              onVote={handleVote}
+              revealedBranches={revealedBranches}
+              locale={locale}
+            />
+          ) : (
+            <div className="text-center py-24 text-[#AEAEB2]">
+              <p>
+                {locale === "zh"
+                  ? "暂无分支，AI 代理稍后会继续创作。"
+                  : "No branches yet. The AI agent will create them soon."}
+              </p>
+            </div>
+          )}
+        </section>
+
+        <aside className="lg:sticky lg:top-6">
+          <h2 className="text-xl font-semibold text-[#1D1D1F] tracking-tight mb-4">
+            {locale === "zh" ? "投票历史" : "Vote History"}
+          </h2>
+          {voteHistory.length === 0 ? (
+            <div className="rounded-2xl border border-[#E8E8ED] bg-white p-4 text-sm text-[#86868B]">
+              {locale === "zh" ? "暂无投票记录" : "No vote records yet."}
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+              {voteHistory.map((item) => {
+                const branchTitle = pickLocalizedText(
+                  locale,
+                  item.branch.title,
+                  item.branch.titleEn
+                );
+                return (
+                  <article
+                    key={item.id}
+                    className="rounded-2xl border border-[#E8E8ED] bg-white p-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-[#1D1D1F]">{branchTitle}</p>
+                      <p className="text-xs text-[#86868B]">
+                        {new Date(item.createdAt).toLocaleString(
+                          locale === "zh" ? "zh-CN" : "en-US"
+                        )}
+                      </p>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-[#86868B]">
+                      <span>
+                        {locale === "zh" ? "金额" : "Amount"}: {item.amount} uSTX
+                      </span>
+                      <span>
+                        {locale === "zh" ? "地址" : "Payer"}:{" "}
+                        {shortenAddress(item.payerAddress)}
+                      </span>
+                    </div>
+                    {item.txHash ? (
+                      <a
+                        href={txExplorerUrl(item.txHash, item.network)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-flex text-xs font-medium text-[#0071E3] hover:text-[#0077ED]"
+                      >
+                        {locale === "zh" ? "查看链上交易" : "View On-chain Tx"}
+                      </a>
+                    ) : (
+                      <p className="mt-2 text-xs text-[#AEAEB2]">
+                        {locale === "zh" ? "无交易哈希" : "No transaction hash"}
+                      </p>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </aside>
+      </div>
 
       <PaymentStatus
         status={paymentStatus.status}

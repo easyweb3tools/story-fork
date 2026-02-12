@@ -51,6 +51,157 @@ type BranchOption = {
   summaryEn: string;
 };
 
+type Direction = "freedom" | "power";
+
+function nextChapterNumber(leaf: Branch): number {
+  return leaf.depth + 2;
+}
+
+function stripChapterPrefixZh(title: string): string {
+  return title.replace(/^第[一二三四五六七八九十百千万0-9]+章[：:]\s*/u, "").trim();
+}
+
+function stripChapterPrefixEn(title: string): string {
+  return title.replace(/^chapter\s*\d+[：:]\s*/iu, "").trim();
+}
+
+function isWeakZhChapterTitle(title: string): boolean {
+  const t = title.trim();
+  if (!t) return true;
+  const weak = [
+    "分叉抉择",
+    "下一章",
+    "焚钥自由派",
+    "主权接管派",
+    "自由派",
+    "接管派",
+    "选择",
+    "抉择",
+  ];
+  return weak.some((w) => t === w || t.includes(w));
+}
+
+function isWeakEnChapterTitle(title: string): boolean {
+  const t = title.trim().toLowerCase();
+  if (!t) return true;
+  const weak = [
+    "fork decision",
+    "next chapter",
+    "burn-key freedom",
+    "sovereign takeover",
+    "choice",
+    "decision",
+  ];
+  return weak.some((w) => t === w || t.includes(w));
+}
+
+function pickZhHook(summary: string, direction: Direction): string {
+  const clean = summary
+    .replace(/^(焚钥自由方向|主权接管方向)[：:]\s*/u, "")
+    .replace(/[。！？!?].*$/u, "")
+    .trim();
+  if (clean.length >= 4 && clean.length <= 18) return clean;
+  if (clean.length > 18) return clean.slice(0, 18);
+  return direction === "freedom" ? "火线焚钥倒计时" : "创世密钥接管令";
+}
+
+function pickEnHook(summary: string, direction: Direction): string {
+  const clean = summary
+    .replace(/^(Burn-Key Freedom|Sovereign Takeover)[：:]\s*/iu, "")
+    .replace(/[.!?].*$/u, "")
+    .trim();
+  if (clean.length >= 8 && clean.length <= 40) return clean;
+  if (clean.length > 40) return clean.slice(0, 40);
+  return direction === "freedom" ? "Burn Protocol Countdown" : "Genesis Key Seizure";
+}
+
+function ensureChapterTitleZh(title: string, chapterNo: number, hook: string): string {
+  const core = stripChapterPrefixZh(title);
+  const clean = core && !isWeakZhChapterTitle(core) ? core : hook;
+  return `第${chapterNo}章：${clean}`;
+}
+
+function ensureChapterTitleEn(title: string, chapterNo: number, hook: string): string {
+  const core = stripChapterPrefixEn(title);
+  const clean = core && !isWeakEnChapterTitle(core) ? core : hook;
+  return `Chapter ${chapterNo}: ${clean}`;
+}
+
+function prependDirectionSummary(summary: string, direction: Direction): string {
+  const clean = summary.replace(/^(焚钥自由方向|主权接管方向)[：:]\s*/u, "").trim();
+  if (direction === "freedom") {
+    return `焚钥自由方向：${clean || "维持去中心化与无主秩序。"}`
+  }
+  return `主权接管方向：${clean || "接管私钥并重塑权力秩序。"}`
+}
+
+function prependDirectionSummaryEn(summary: string, direction: Direction): string {
+  const clean = summary
+    .replace(/^(Burn-Key Freedom|Sovereign Takeover)[：:]\s*/iu, "")
+    .trim();
+  if (direction === "freedom") {
+    return `Burn-Key Freedom: ${clean || "Preserve decentralization and ownerless order."}`;
+  }
+  return `Sovereign Takeover: ${clean || "Seize the key and rebuild power order."}`;
+}
+
+function normalizeBranchOptionsForFork(options: BranchOption[], leaf: Branch): BranchOption[] {
+  const chapterNo = nextChapterNumber(leaf);
+  const directions: Direction[] = ["freedom", "power"];
+
+  return directions.map((direction, idx) => {
+    const source = options[idx] || options[0];
+    if (!source) {
+      return direction === "freedom"
+        ? {
+            title: ensureChapterTitleZh("机房封锁与焚钥令", chapterNo, "机房封锁与焚钥令"),
+            titleEn: ensureChapterTitleEn(
+              "Data-Center Lockdown and Burn Order",
+              chapterNo,
+              "Data-Center Lockdown and Burn Order"
+            ),
+            content:
+              "Cipher 盯着私钥脚本，门外追踪无人机撞击防火门。只要按下回车，创世私钥将被覆写归零，比特币继续无主，全球权力失去终极杠杆；但他也将失去唯一能阻止清算风暴的筹码。",
+            contentEn:
+              "Cipher stared at the key script while pursuit drones hit the fire door. One Enter would overwrite the Genesis key to zero and keep Bitcoin ownerless, stripping every regime of final leverage, but it would also erase his only shield against liquidation storms.",
+            summary: prependDirectionSummary("", "freedom"),
+            summaryEn: prependDirectionSummaryEn("", "freedom"),
+          }
+        : {
+            title: ensureChapterTitleZh("创世密钥接管倒计时", chapterNo, "创世密钥接管倒计时"),
+            titleEn: ensureChapterTitleEn(
+              "Genesis Key Seizure Countdown",
+              chapterNo,
+              "Genesis Key Seizure Countdown"
+            ),
+            content:
+              "Cipher 将冷钱包导入隔离节点，开始批量转移创世资产。审计 AI 与黑市矿池同时锁定他的位置。执行到底，他将成为新秩序的隐形仲裁者；但比特币也会从公共信仰滑向个人主权工具。",
+            contentEn:
+              "Cipher loaded cold storage into an isolated node and started phased transfers of Genesis assets. Audit AI and black-market pools locked onto his location. If he completed execution, he would become the hidden arbiter of a new order, but Bitcoin would slide from public belief into a private sovereignty tool.",
+            summary: prependDirectionSummary("", "power"),
+            summaryEn: prependDirectionSummaryEn("", "power"),
+          };
+    }
+
+    return {
+      title: ensureChapterTitleZh(
+        source.title,
+        chapterNo,
+        pickZhHook(source.summary, direction)
+      ),
+      titleEn: ensureChapterTitleEn(
+        source.titleEn || source.title,
+        chapterNo,
+        pickEnHook(source.summaryEn || source.summary, direction)
+      ),
+      content: source.content,
+      contentEn: source.contentEn,
+      summary: prependDirectionSummary(source.summary, direction),
+      summaryEn: prependDirectionSummaryEn(source.summaryEn || source.summary, direction),
+    };
+  });
+}
+
 /**
  * Find leaf nodes (branches with no children) in a branch tree
  */
@@ -183,6 +334,26 @@ function trimText(text: string, max = 1200): string {
   return `${text.slice(0, max)}...`;
 }
 
+function normalizeLLMContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (
+        typeof part === "object" &&
+        part !== null &&
+        "text" in part &&
+        typeof (part as { text?: unknown }).text === "string"
+      ) {
+        return (part as { text: string }).text;
+      }
+      return "";
+    })
+    .join("");
+}
+
 function extractJsonArray(text: string): unknown[] {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   const candidate = (fenced?.[1] || text).trim();
@@ -258,7 +429,8 @@ async function generateBranchOptionsWithLLM(
 ): Promise<BranchOption[]> {
   const guidelines = await loadSkillGuidelines();
   const isSatoshiStory = story.title.includes("中本聪的私钥");
-  const branchCount = isSatoshiStory ? 2 : leaf.depth >= 3 ? 2 : 3;
+  const branchCount = 2;
+  const chapterNo = nextChapterNumber(leaf);
   const contextText = buildNarrativeContext(canonPath);
   const specialContext = isSatoshiStory
     ? `
@@ -305,8 +477,21 @@ ${guidelines}
 
 ${specialContext}
 
+Output contract (strict):
+- Return exactly 2 branches in this order:
+  1) Burn-Key Freedom (自由/混沌/去中心化)
+  2) Sovereign Takeover (秩序/权力/控制)
+- title/titleEn must be NEXT CHAPTER titles:
+  - title format: "第${chapterNo}章：..."
+  - titleEn format: "Chapter ${chapterNo}: ..."
+- 标题必须是“剧情推进标题”，不是方向标签：要体现本章冲突事件，能吸引投票（8-16字优先）
+- 禁止使用弱标题：如“分叉抉择 / 下一章 / 焚钥自由派 / 主权接管派”
+- summary/summaryEn must start with direction labels:
+  - "焚钥自由方向：..." / "Burn-Key Freedom: ..."
+  - "主权接管方向：..." / "Sovereign Takeover: ..."
+
 Generate ${branchCount} distinct next branches. Return JSON array only:
-[{"title":"4-10字中文标题","titleEn":"short English title","content":"200-300中文字符，强冲突叙事","contentEn":"120-220 words English narrative","summary":"1-2句中文高钩子预告","summaryEn":"1-2 sentence English teaser"}]
+[{"title":"第${chapterNo}章：章节标题","titleEn":"Chapter ${chapterNo}: chapter title","content":"200-300中文字符，强冲突叙事","contentEn":"120-220 words English narrative","summary":"焚钥自由方向：1-2句中文高钩子预告","summaryEn":"Burn-Key Freedom: 1-2 sentence English teaser"},{"title":"第${chapterNo}章：章节标题","titleEn":"Chapter ${chapterNo}: chapter title","content":"200-300中文字符，强冲突叙事","contentEn":"120-220 words English narrative","summary":"主权接管方向：1-2句中文高钩子预告","summaryEn":"Sovereign Takeover: 1-2 sentence English teaser"}]
 `.trim();
 
   console.log(`[LLM] Prompt for "${leaf.title}":\n${trimText(prompt, 2000)}`);
@@ -325,24 +510,7 @@ Generate ${branchCount} distinct next branches. Return JSON array only:
   });
 
   const firstChoice = completion.choices?.[0];
-  const messageContent = firstChoice?.message?.content;
-  const output =
-    typeof messageContent === "string"
-      ? messageContent
-      : Array.isArray(messageContent)
-        ? messageContent
-            .map((part) =>
-              typeof part === "string"
-                ? part
-                : typeof part === "object" &&
-                    part !== null &&
-                    "text" in part &&
-                    typeof part.text === "string"
-                  ? part.text
-                  : ""
-            )
-            .join("")
-        : "";
+  const output = normalizeLLMContent(firstChoice?.message?.content as unknown);
 
   if (!output.trim()) {
     throw new Error(
@@ -353,7 +521,7 @@ Generate ${branchCount} distinct next branches. Return JSON array only:
   console.log(`[LLM] Raw response for "${leaf.title}":\n${trimText(output, 2000)}`);
 
   const parsed = extractJsonArray(output);
-  const options = sanitizeBranchOptions(parsed);
+  const options = normalizeBranchOptionsForFork(sanitizeBranchOptions(parsed), leaf);
   if (options.length === 0) {
     throw new Error("No valid branch options parsed from LLM output");
   }
@@ -449,6 +617,8 @@ async function run() {
             );
             options = generateFallbackBranchOptions(leaf, story.title);
           }
+
+          options = normalizeBranchOptionsForFork(options, leaf);
 
           console.log(
             `  Generating ${options.length} branches for "${leaf.title}"`

@@ -10,7 +10,10 @@ export interface WalletAccount {
 }
 
 export interface SignedPaymentPayload {
-  x402Version: 1;
+  x402Version: 2;
+  resource: {
+    url: string;
+  };
   accepted: {
     scheme: string;
     network: string;
@@ -18,18 +21,74 @@ export interface SignedPaymentPayload {
     asset: string;
     payTo: string;
     maxTimeoutSeconds: number;
-    resource: string;
-    description: string;
   };
   payload: {
     transaction: string;
   };
-  payer: string;
-  transaction: string;
-  network: string;
-  amount: string;
-  asset: string;
-  payTo: string;
+}
+
+type WalletAddressEntry = {
+  address?: string;
+  publicKey?: string;
+};
+
+function isStacksAddress(address: string | undefined): boolean {
+  if (!address) return false;
+  return address.startsWith("ST") || address.startsWith("SP");
+}
+
+function networkMatchesAddress(
+  network: "mainnet" | "testnet",
+  address: string | undefined
+): boolean {
+  if (!address) return false;
+  if (network === "mainnet") return address.startsWith("SP");
+  return address.startsWith("ST");
+}
+
+function pickBestStacksEntry(
+  entries: WalletAddressEntry[],
+  network: "mainnet" | "testnet"
+): WalletAddressEntry | null {
+  const stacksOnly = entries.filter(
+    (entry) => isStacksAddress(entry.address) && typeof entry.publicKey === "string"
+  );
+  if (stacksOnly.length === 0) return null;
+
+  const networkMatched = stacksOnly.find((entry) =>
+    networkMatchesAddress(network, entry.address)
+  );
+  return networkMatched || stacksOnly[0] || null;
+}
+
+function getAddressEntries(payload: unknown): WalletAddressEntry[] {
+  if (!payload || typeof payload !== "object") return [];
+  const data = payload as Record<string, unknown>;
+
+  if (Array.isArray(data.addresses)) {
+    return data.addresses.filter(
+      (entry): entry is WalletAddressEntry =>
+        typeof entry === "object" && entry !== null && "address" in entry
+    );
+  }
+
+  if (Array.isArray(data.accounts)) {
+    const entries: WalletAddressEntry[] = [];
+    for (const entry of data.accounts) {
+      if (!entry || typeof entry !== "object") continue;
+      const account = entry as Record<string, unknown>;
+      const address =
+        (typeof account.address === "string" && account.address) ||
+        (typeof account.stxAddress === "string" && account.stxAddress) ||
+        undefined;
+      const publicKey = typeof account.publicKey === "string" ? account.publicKey : undefined;
+      if (!address) continue;
+      entries.push({ address, publicKey });
+    }
+    return entries;
+  }
+
+  return [];
 }
 
 function formatWalletError(error: unknown): Error {
@@ -101,33 +160,33 @@ export async function connectWallet(
       });
     }
 
-    const fromConnect = connectResult?.addresses?.[0];
+    const fromConnect = pickBestStacksEntry(connectResult?.addresses || [], network);
     if (fromConnect) {
       return {
-        address: fromConnect.address,
-        publicKey: fromConnect.publicKey,
+        address: fromConnect.address!,
+        publicKey: fromConnect.publicKey!,
       };
     }
 
     const addresses = await requestAddressesCompat(network);
-    const address = addresses.addresses[0];
+    const address = pickBestStacksEntry(getAddressEntries(addresses), network);
     if (address) {
       return {
-        address: address.address,
-        publicKey: address.publicKey,
+        address: address.address!,
+        publicKey: address.publicKey!,
       };
     }
 
     // Compatibility fallback for wallets that still expose account payloads.
     const accounts = await requestAccountsCompat(network);
-    const account = accounts.accounts[0];
+    const account = pickBestStacksEntry(getAddressEntries(accounts), network);
     if (!account) {
       throw new Error(`No ${network} Stacks account returned by wallet`);
     }
 
     return {
-      address: account.address,
-      publicKey: account.publicKey,
+      address: account.address!,
+      publicKey: account.publicKey!,
     };
   } catch (error) {
     throw formatWalletError(error);
@@ -144,20 +203,20 @@ export async function getActiveWalletAccount(
   try {
     const network = normalizeStacksNetwork(preferredNetwork);
     const addresses = await requestAddressesCompat(network);
-    const address = addresses.addresses[0];
+    const address = pickBestStacksEntry(getAddressEntries(addresses), network);
     if (address) {
       return {
-        address: address.address,
-        publicKey: address.publicKey,
+        address: address.address!,
+        publicKey: address.publicKey!,
       };
     }
 
     const accounts = await requestAccountsCompat(network);
-    const account = accounts.accounts[0];
+    const account = pickBestStacksEntry(getAddressEntries(accounts), network);
     if (!account) return null;
     return {
-      address: account.address,
-      publicKey: account.publicKey,
+      address: account.address!,
+      publicKey: account.publicKey!,
     };
   } catch {
     return null;
@@ -169,12 +228,13 @@ export async function signPayment(
   account: WalletAccount
 ): Promise<SignedPaymentPayload> {
   const network = normalizeStacksNetwork(paymentRequirements.network);
+  const activeAccount = (await getActiveWalletAccount(paymentRequirements.network)) || account;
 
   const unsignedTx = await makeUnsignedSTXTokenTransfer({
     recipient: paymentRequirements.payTo,
     amount: BigInt(paymentRequirements.maxAmountRequired),
     network,
-    publicKey: account.publicKey,
+    publicKey: activeAccount.publicKey,
     memo: buildMemo(paymentRequirements.resource),
   });
 
@@ -213,7 +273,10 @@ export async function signPayment(
   }
 
   return {
-    x402Version: 1,
+    x402Version: 2,
+    resource: {
+      url: paymentRequirements.resource,
+    },
     accepted: {
       scheme: paymentRequirements.scheme,
       network: paymentRequirements.network,
@@ -221,17 +284,9 @@ export async function signPayment(
       asset: paymentRequirements.asset,
       payTo: paymentRequirements.payTo,
       maxTimeoutSeconds: paymentRequirements.maxTimeoutSeconds,
-      resource: paymentRequirements.resource,
-      description: paymentRequirements.description,
     },
     payload: {
       transaction: signedTransaction,
     },
-    payer: account.address,
-    transaction: signedTransaction,
-    network: paymentRequirements.network,
-    amount: paymentRequirements.maxAmountRequired,
-    asset: paymentRequirements.asset,
-    payTo: paymentRequirements.payTo,
   };
 }

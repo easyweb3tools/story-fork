@@ -50,7 +50,7 @@ export async function GET(
     return createPaymentRequired(
       `/api/branches/${branchId}/read`,
       branch.readPrice,
-      `Read "${branch.title}" - ${branch.readPrice} microSTX`
+      `Read branch content - ${branch.readPrice} microSTX`
     );
   }
 
@@ -59,7 +59,7 @@ export async function GET(
     req,
     branch.readPrice,
     `/api/branches/${branchId}/read`,
-    `Read "${branch.title}" - ${branch.readPrice} microSTX`
+    `Read branch content - ${branch.readPrice} microSTX`
   );
 
   if (!result.valid) {

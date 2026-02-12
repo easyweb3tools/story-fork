@@ -20,6 +20,59 @@ export default function LuminousFlow({
   revealedBranches,
   locale,
 }: LuminousFlowProps) {
+  const directionByBranchId = useMemo(() => {
+    type Direction = "freedom" | "power";
+    const map = new Map<string, Direction>();
+
+    const detectDirectionFromNode = (node: BranchNodeType): Direction | null => {
+      const text = `${node.title || ""} ${node.titleEn || ""} ${node.summary || ""} ${
+        node.summaryEn || ""
+      } ${node.content || ""} ${node.contentEn || ""}`.toLowerCase();
+      const freedomKeywords = ["焚", "自由", "无主", "chaos", "freedom", "burn"];
+      const powerKeywords = ["主权", "接管", "控制", "order", "power", "keep"];
+      if (freedomKeywords.some((k) => text.includes(k))) return "freedom";
+      if (powerKeywords.some((k) => text.includes(k))) return "power";
+      return null;
+    };
+
+    const assignDirection = (node: BranchNodeType, direction: Direction) => {
+      map.set(node.id, direction);
+      for (const child of node.children || []) {
+        assignDirection(child, direction);
+      }
+    };
+
+    const collectDepthOne = (nodes: BranchNodeType[]): BranchNodeType[] => {
+      const result: BranchNodeType[] = [];
+      const walk = (items: BranchNodeType[]) => {
+        for (const item of items) {
+          if (item.depth === 1) result.push(item);
+          if (item.children?.length) walk(item.children);
+        }
+      };
+      walk(nodes);
+      return result.sort((a, b) => a.orderIndex - b.orderIndex);
+    };
+
+    const depthOne = collectDepthOne(branches);
+    for (let idx = 0; idx < depthOne.length; idx++) {
+      const node = depthOne[idx];
+      const detected = detectDirectionFromNode(node);
+      const fallback: Direction = idx % 2 === 0 ? "freedom" : "power";
+      assignDirection(node, detected || fallback);
+    }
+
+    return map;
+  }, [branches]);
+
+  const directionLabelByLocale = useMemo(
+    () => ({
+      freedom: locale === "zh" ? "焚钥自由方向" : "Burn-Key Freedom",
+      power: locale === "zh" ? "主权接管方向" : "Sovereign Takeover",
+    }),
+    [locale]
+  );
+
   // Calculate max funding per depth level for relative sizing
   const maxFundingByParent = useMemo(() => {
     const map = new Map<string, number>();
@@ -61,6 +114,13 @@ export default function LuminousFlow({
             onVote={onVote}
             isRevealed={revealedBranches.has(node.id) || node.depth === 0}
             locale={locale}
+            directionLabel={
+              node.depth > 0
+                ? directionLabelByLocale[
+                    (directionByBranchId.get(node.id) || "freedom") as "freedom" | "power"
+                  ]
+                : null
+            }
           />
 
           {/* Children */}

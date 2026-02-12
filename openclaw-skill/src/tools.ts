@@ -426,7 +426,8 @@ async function run() {
             continue;
           }
 
-          if (REQUIRE_PAID_VOTE && !hasPaidVoteSignal(leaf)) {
+          const isBootstrapLeaf = leaf.depth === 0;
+          if (REQUIRE_PAID_VOTE && !isBootstrapLeaf && !hasPaidVoteSignal(leaf)) {
             console.log(
               `  Skipping leaf "${leaf.title}" (no paid vote signal: voteCount=${leaf.voteCount}, totalFunding=${leaf.totalFunding})`
             );

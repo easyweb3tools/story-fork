@@ -86,18 +86,27 @@ export async function connectWallet(
   const network = normalizeStacksNetwork(preferredNetwork);
 
   try {
+    let connectResult: { addresses?: Array<{ address: string; publicKey: string }> } | undefined;
     try {
-      await connect({
+      connectResult = await connect({
         forceWalletSelect: true,
         persistWalletSelect: true,
         network,
       });
     } catch (error) {
       if (!isInvalidParamsError(error)) throw error;
-      await connect({
+      connectResult = await connect({
         forceWalletSelect: true,
         persistWalletSelect: true,
       });
+    }
+
+    const fromConnect = connectResult?.addresses?.[0];
+    if (fromConnect) {
+      return {
+        address: fromConnect.address,
+        publicKey: fromConnect.publicKey,
+      };
     }
 
     const addresses = await requestAddressesCompat(network);

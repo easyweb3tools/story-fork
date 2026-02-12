@@ -10,7 +10,6 @@ import { pickLocalizedText } from "@/lib/i18n";
 import {
   connectWallet,
   disconnectWallet,
-  getActiveWalletAccount,
   signPayment,
   type WalletAccount,
 } from "@/lib/wallet";
@@ -129,16 +128,6 @@ export default function StoryPage() {
     if (saved === "zh" || saved === "en") {
       setLocale(saved);
     }
-  }, []);
-
-  useEffect(() => {
-    getActiveWalletAccount()
-      .then((account) => {
-        if (account) setWalletAccount(account);
-      })
-      .catch(() => {
-        // ignore
-      });
   }, []);
 
   useEffect(() => {

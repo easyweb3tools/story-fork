@@ -58,7 +58,8 @@ export async function GET(
   const result = await verifyPayment(
     req,
     branch.readPrice,
-    `/api/branches/${branchId}/read`
+    `/api/branches/${branchId}/read`,
+    `Read "${branch.title}" - ${branch.readPrice} microSTX`
   );
 
   if (!result.valid) {

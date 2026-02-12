@@ -50,7 +50,18 @@ export async function POST(req: NextRequest) {
   if (authError) return authError;
 
   const body = await req.json();
-  const { storyId, parentId, title, content, summary, generatedBy, prompt } = body;
+  const {
+    storyId,
+    parentId,
+    title,
+    titleEn,
+    content,
+    contentEn,
+    summary,
+    summaryEn,
+    generatedBy,
+    prompt,
+  } = body;
 
   if (!storyId || !parentId || !title || !content) {
     return NextResponse.json(
@@ -85,8 +96,11 @@ export async function POST(req: NextRequest) {
       storyId,
       parentId,
       title,
+      titleEn: titleEn || null,
       content,
+      contentEn: contentEn || null,
       summary: summary || null,
+      summaryEn: summaryEn || null,
       depth: parent.depth + 1,
       orderIndex: siblingCount,
       generatedBy: generatedBy || null,

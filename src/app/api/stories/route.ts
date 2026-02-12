@@ -34,7 +34,15 @@ export async function POST(req: NextRequest) {
   if (authError) return authError;
 
   const body = await req.json();
-  const { title, description, genre, coverImage, rootBranch } = body;
+  const {
+    title,
+    titleEn,
+    description,
+    descriptionEn,
+    genre,
+    coverImage,
+    rootBranch,
+  } = body;
 
   if (!title || !description || !rootBranch?.title || !rootBranch?.content) {
     return NextResponse.json(
@@ -46,14 +54,19 @@ export async function POST(req: NextRequest) {
   const story = await prisma.story.create({
     data: {
       title,
+      titleEn: titleEn || null,
       description,
+      descriptionEn: descriptionEn || null,
       genre: genre || "fantasy",
       coverImage,
       branches: {
         create: {
           title: rootBranch.title,
+          titleEn: rootBranch.titleEn || null,
           content: rootBranch.content,
+          contentEn: rootBranch.contentEn || null,
           summary: rootBranch.summary || null,
+          summaryEn: rootBranch.summaryEn || null,
           depth: 0,
           orderIndex: 0,
           isCanon: true,

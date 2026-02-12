@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import LuminousFlow from "@/components/LuminousFlow";
 import PaymentStatus from "@/components/PaymentStatus";
 import { BranchNode, PaymentRequirements } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
+import { pickLocalizedText } from "@/lib/i18n";
 import {
   connectWallet,
   disconnectWallet,
@@ -16,10 +18,14 @@ import {
 interface Story {
   id: string;
   title: string;
+  titleEn: string | null;
   description: string;
+  descriptionEn: string | null;
   genre: string;
   status: string;
 }
+
+const STORAGE_KEY = "story_fork_locale";
 
 export default function StoryPage() {
   const params = useParams();
@@ -36,6 +42,7 @@ export default function StoryPage() {
   }>({ status: "idle" });
   const [walletAccount, setWalletAccount] = useState<WalletAccount | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
+  const [locale, setLocale] = useState<Locale>("zh");
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const updatePaymentStatus = useCallback(
@@ -54,6 +61,29 @@ export default function StoryPage() {
       }
     },
     []
+  );
+
+  const formatWalletConnectError = useCallback(
+    (error: unknown): string => {
+      const raw =
+        error instanceof Error && error.message
+          ? error.message
+          : "Wallet connection cancelled or failed";
+      const normalized = raw.toLowerCase();
+
+      if (
+        normalized.includes("cannot redefine property: stacksprovider") ||
+        normalized.includes("another wallet may have inpage.js script") ||
+        normalized.includes("failed setting xverse stacks default provider")
+      ) {
+        return locale === "zh"
+          ? "检测到钱包扩展冲突（如同时启用 Xverse + Leather）。请先禁用其中一个后重试。"
+          : "Wallet extension conflict detected (e.g. Xverse + Leather both enabled). Disable one wallet extension and try again.";
+      }
+
+      return raw;
+    },
+    [locale]
   );
 
   const fetchData = useCallback(async () => {
@@ -93,6 +123,13 @@ export default function StoryPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved === "zh" || saved === "en") {
+      setLocale(saved);
+    }
+  }, []);
 
   useEffect(() => {
     getActiveWalletAccount()
@@ -162,10 +199,7 @@ export default function StoryPage() {
         message: "Wallet connected",
       });
     } catch (error) {
-      const detail =
-        error instanceof Error && error.message
-          ? error.message
-          : "Wallet connection cancelled or failed";
+      const detail = formatWalletConnectError(error);
       updatePaymentStatus({
         status: "error",
         message: detail,
@@ -183,6 +217,17 @@ export default function StoryPage() {
   const shortAddress = walletAccount
     ? `${walletAccount.address.slice(0, 6)}...${walletAccount.address.slice(-4)}`
     : null;
+  const storyTitle = pickLocalizedText(locale, story?.title, story?.titleEn);
+  const storyDescription = pickLocalizedText(
+    locale,
+    story?.description,
+    story?.descriptionEn
+  );
+
+  const switchLocale = (next: Locale) => {
+    setLocale(next);
+    window.localStorage.setItem(STORAGE_KEY, next);
+  };
 
   const handleRead = async (branchId: string) => {
     updatePaymentStatus({
@@ -280,19 +325,21 @@ export default function StoryPage() {
           href="/"
           className="text-sm text-[#0071E3] hover:text-[#0077ED] transition-colors mb-6 inline-block font-medium"
         >
-          &larr; Back to stories
+          &larr; {locale === "zh" ? "返回故事列表" : "Back to stories"}
         </a>
         <h1 className="text-3xl font-semibold text-[#1D1D1F] mb-2 tracking-tight">
-          {story.title}
+          {storyTitle}
         </h1>
-        <p className="text-[#86868B] leading-relaxed">{story.description}</p>
+        <p className="text-[#86868B] leading-relaxed">{storyDescription}</p>
         <div className="mt-4">
           {walletAccount ? (
             <button
               onClick={handleDisconnectWallet}
               className="px-3 py-1.5 rounded-xl border border-[#D2D2D7] text-xs text-[#1D1D1F] hover:bg-[#F5F5F7] transition-colors"
             >
-              Wallet: {shortAddress} (Disconnect)
+              {locale === "zh"
+                ? `钱包: ${shortAddress} (断开)`
+                : `Wallet: ${shortAddress} (Disconnect)`}
             </button>
           ) : (
             <button
@@ -300,9 +347,44 @@ export default function StoryPage() {
               disabled={walletLoading}
               className="px-3 py-1.5 rounded-xl bg-[#0071E3] text-white text-xs font-medium hover:bg-[#0077ED] disabled:opacity-60 transition-colors"
             >
-              {walletLoading ? "Connecting..." : "Connect STX Wallet"}
+              {walletLoading
+                ? locale === "zh"
+                  ? "连接中..."
+                  : "Connecting..."
+                : locale === "zh"
+                  ? "连接 STX 钱包"
+                  : "Connect STX Wallet"}
             </button>
           )}
+        </div>
+        {!walletAccount && (
+          <p className="mt-2 text-[11px] text-[#86868B]">
+            {locale === "zh"
+              ? "若连接失败且浏览器安装了 Xverse + Leather，请先禁用其中一个扩展后再连接。"
+              : "If connection fails and both Xverse + Leather are installed, disable one extension before connecting."}
+          </p>
+        )}
+        <div className="mt-4 inline-flex rounded-full border border-[#D2D2D7] p-1 bg-white">
+          <button
+            onClick={() => switchLocale("zh")}
+            className={`px-3 py-1.5 text-xs rounded-full transition-colors ${
+              locale === "zh"
+                ? "bg-[#1D1D1F] text-white"
+                : "text-[#1D1D1F] hover:bg-[#F5F5F7]"
+            }`}
+          >
+            中文
+          </button>
+          <button
+            onClick={() => switchLocale("en")}
+            className={`px-3 py-1.5 text-xs rounded-full transition-colors ${
+              locale === "en"
+                ? "bg-[#1D1D1F] text-white"
+                : "text-[#1D1D1F] hover:bg-[#F5F5F7]"
+            }`}
+          >
+            English
+          </button>
         </div>
         <div className="flex items-center gap-3 mt-4">
           <span className="px-2.5 py-1 bg-[#F5F5F7] text-[#86868B] rounded-full text-xs font-medium">
@@ -320,7 +402,11 @@ export default function StoryPage() {
                 story.status === "active" ? "bg-[#34C759]" : "bg-[#AEAEB2]"
               }`}
             />
-            {story.status}
+            {locale === "zh"
+              ? story.status === "active"
+                ? "活跃"
+                : "已结束"
+              : story.status}
           </span>
         </div>
       </div>
@@ -329,11 +415,13 @@ export default function StoryPage() {
       <div className="flex items-center gap-6 mb-8 text-xs text-[#86868B]">
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-[#0071E3]" />
-          <span>Canon (highest funded)</span>
+          <span>
+            {locale === "zh" ? "正史分支（资金最高）" : "Canon (highest funded)"}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-[#D2D2D7]" />
-          <span>Alternative branch</span>
+          <span>{locale === "zh" ? "其他分支" : "Alternative branch"}</span>
         </div>
       </div>
 
@@ -344,10 +432,15 @@ export default function StoryPage() {
           onRead={handleRead}
           onVote={handleVote}
           revealedBranches={revealedBranches}
+          locale={locale}
         />
       ) : (
         <div className="text-center py-24 text-[#AEAEB2]">
-          <p>No branches yet. The AI agent will create them soon.</p>
+          <p>
+            {locale === "zh"
+              ? "暂无分支，AI 代理稍后会继续创作。"
+              : "No branches yet. The AI agent will create them soon."}
+          </p>
         </div>
       )}
 

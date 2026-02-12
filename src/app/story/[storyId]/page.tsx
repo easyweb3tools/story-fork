@@ -26,6 +26,16 @@ interface Story {
 
 const STORAGE_KEY = "story_fork_locale";
 
+function encodePaymentHeaderValue(payload: unknown): string {
+  const json = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
 export default function StoryPage() {
   const params = useParams();
   const storyId = params.storyId as string;
@@ -171,7 +181,7 @@ export default function StoryPage() {
         ...init,
         headers: {
           ...(init.headers || {}),
-          "x-payment": JSON.stringify(signedPayload),
+          "x-payment": encodePaymentHeaderValue(signedPayload),
         },
       });
     },
@@ -253,8 +263,10 @@ export default function StoryPage() {
       } else {
         updatePaymentStatus({ status: "error", message: "Failed to read branch" });
       }
-    } catch {
-      updatePaymentStatus({ status: "error", message: "Network error" });
+    } catch (error) {
+      const detail =
+        error instanceof Error && error.message ? error.message : "Network error";
+      updatePaymentStatus({ status: "error", message: detail });
     }
   };
 
@@ -293,8 +305,10 @@ export default function StoryPage() {
       } else {
         updatePaymentStatus({ status: "error", message: "Vote failed" });
       }
-    } catch {
-      updatePaymentStatus({ status: "error", message: "Network error" });
+    } catch (error) {
+      const detail =
+        error instanceof Error && error.message ? error.message : "Network error";
+      updatePaymentStatus({ status: "error", message: detail });
     }
   };
 

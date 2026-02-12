@@ -178,13 +178,38 @@ export async function signPayment(
     memo: buildMemo(paymentRequirements.resource),
   });
 
+  const serialized = unsignedTx.serialize();
+  const transactionForWallet =
+    typeof serialized === "string"
+      ? serialized
+      : Buffer.from(serialized).toString("hex");
+
   const signed = await request("stx_signTransaction", {
-    transaction: unsignedTx.serialize(),
+    transaction: transactionForWallet,
     broadcast: false,
   });
 
-  if (!signed.transaction) {
-    throw new Error("Wallet did not return a signed transaction");
+  const signedTransaction =
+    (typeof signed === "object" &&
+      signed !== null &&
+      "transaction" in signed &&
+      typeof signed.transaction === "string" &&
+      signed.transaction) ||
+    (typeof signed === "object" &&
+      signed !== null &&
+      "txHex" in signed &&
+      typeof (signed as { txHex?: string }).txHex === "string" &&
+      (signed as { txHex: string }).txHex) ||
+    null;
+
+  if (!signedTransaction) {
+    const signedObj =
+      typeof signed === "object" && signed !== null
+        ? (signed as unknown as Record<string, unknown>)
+        : {};
+    throw new Error(
+      `Wallet did not return a signed transaction (keys=${Object.keys(signedObj).join(",")})`
+    );
   }
 
   return {
@@ -200,10 +225,10 @@ export async function signPayment(
       description: paymentRequirements.description,
     },
     payload: {
-      transaction: signed.transaction,
+      transaction: signedTransaction,
     },
     payer: account.address,
-    transaction: signed.transaction,
+    transaction: signedTransaction,
     network: paymentRequirements.network,
     amount: paymentRequirements.maxAmountRequired,
     asset: paymentRequirements.asset,

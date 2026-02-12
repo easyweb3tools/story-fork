@@ -38,7 +38,6 @@ export function createPaymentRequired(
     {
       status: 402,
       headers: {
-        "X-Payment-Requirements": JSON.stringify(requirements),
         "X-Facilitator-URL": FACILITATOR_URL,
       },
     }
@@ -59,13 +58,25 @@ export async function verifyPayment(
   txHash?: string;
   error?: string;
 }> {
-  const paymentHeader = req.headers.get("x-payment");
-  if (!paymentHeader) {
+  const paymentHeaderRaw = req.headers.get("x-payment");
+  if (!paymentHeaderRaw) {
     return { valid: false, error: "No payment header" };
   }
 
   try {
-    const originalPaymentPayload = JSON.parse(paymentHeader) as Record<string, unknown>;
+    const decodePaymentHeaderToJson = (value: string): string => {
+      try {
+        JSON.parse(value);
+        return value;
+      } catch {
+        const decoded = Buffer.from(value, "base64").toString("utf8");
+        JSON.parse(decoded);
+        return decoded;
+      }
+    };
+
+    const paymentHeaderJson = decodePaymentHeaderToJson(paymentHeaderRaw);
+    const originalPaymentPayload = JSON.parse(paymentHeaderJson) as Record<string, unknown>;
 
     const requirements: PaymentRequirements = {
       scheme: "exact",
@@ -81,24 +92,20 @@ export async function verifyPayment(
     const callFacilitator = async (
       path: string,
       paymentPayload: unknown,
-      x402Version: string | number
+      x402Version: string | number,
+      paymentHeaderValue: string
     ) => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), FACILITATOR_TIMEOUT_MS);
 
       try {
-        const paymentHeader =
-          typeof paymentPayload === "string"
-            ? paymentPayload
-            : JSON.stringify(paymentPayload);
-
         return await fetch(`${FACILITATOR_URL}${path}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             // Newer facilitator contract (x402 core style)
             x402Version,
-            paymentHeader,
+            paymentHeader: paymentHeaderValue,
             // Legacy contract compatibility
             paymentPayload,
             paymentRequirements: requirements,
@@ -113,9 +120,15 @@ export async function verifyPayment(
     // Verify with facilitator
     const verifyOnce = async (
       paymentPayload: unknown,
-      x402Version: string | number
+      x402Version: string | number,
+      paymentHeaderValue: string
     ) => {
-      const verifyRes = await callFacilitator("/verify", paymentPayload, x402Version);
+      const verifyRes = await callFacilitator(
+        "/verify",
+        paymentPayload,
+        x402Version,
+        paymentHeaderValue
+      );
 
       if (!verifyRes.ok) {
         const detail = await verifyRes.text().catch(() => "");
@@ -136,13 +149,18 @@ export async function verifyPayment(
     };
 
     let paymentPayloadToUse: unknown = originalPaymentPayload;
+    let paymentHeaderToUse = paymentHeaderRaw;
     const currentVersion =
       (originalPaymentPayload as { x402Version?: unknown }).x402Version ?? 1;
     let x402VersionToUse: string | number =
       typeof currentVersion === "string" || typeof currentVersion === "number"
         ? currentVersion
         : 1;
-    let verifyResult = await verifyOnce(paymentPayloadToUse, x402VersionToUse);
+    let verifyResult = await verifyOnce(
+      paymentPayloadToUse,
+      x402VersionToUse,
+      paymentHeaderToUse
+    );
 
     // Some wallets/facilitators disagree on x402Version type/value.
     // Retry with compatible versions to avoid hard-failing user payments.
@@ -159,9 +177,18 @@ export async function verifyPayment(
           ...originalPaymentPayload,
           x402Version: version,
         };
-        const candidateResult = await verifyOnce(candidatePayload, version);
+        const candidateHeader = Buffer.from(
+          JSON.stringify(candidatePayload),
+          "utf8"
+        ).toString("base64");
+        const candidateResult = await verifyOnce(
+          candidatePayload,
+          version,
+          candidateHeader
+        );
         if (candidateResult.isValid) {
           paymentPayloadToUse = candidatePayload;
+          paymentHeaderToUse = candidateHeader;
           x402VersionToUse = version;
           verifyResult = candidateResult;
           break;
@@ -180,7 +207,8 @@ export async function verifyPayment(
     const settleRes = await callFacilitator(
       "/settle",
       paymentPayloadToUse,
-      x402VersionToUse
+      x402VersionToUse,
+      paymentHeaderToUse
     );
 
     if (!settleRes.ok) {

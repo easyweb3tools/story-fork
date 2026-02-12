@@ -120,7 +120,7 @@ export default function BranchNode({
       </div>
 
       {/* Vote button */}
-      {isRevealed && node.depth > 0 && (
+      {node.depth > 0 && (
         <button
           onClick={() => onVote(node.id)}
           className="mt-3 w-full py-2 text-xs font-medium rounded-xl

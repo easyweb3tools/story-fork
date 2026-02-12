@@ -1,18 +1,24 @@
 "use client";
 
+import type { Locale } from "@/lib/i18n";
+import { pickLocalizedText } from "@/lib/i18n";
+
 interface StoryCardProps {
   story: {
     id: string;
     title: string;
+    titleEn: string | null;
     description: string;
+    descriptionEn: string | null;
     genre: string;
     status: string;
     branches: { id: string; isCanon: boolean; totalFunding: string }[];
     createdAt: string;
   };
+  locale: Locale;
 }
 
-export default function StoryCard({ story }: StoryCardProps) {
+export default function StoryCard({ story, locale }: StoryCardProps) {
   const totalFunding = story.branches.reduce(
     (sum, b) => sum + Number(b.totalFunding),
     0
@@ -28,6 +34,12 @@ export default function StoryCard({ story }: StoryCardProps) {
   };
 
   const genreAccent = genreAccents[story.genre] || "bg-gray-100 text-gray-600";
+  const displayTitle = pickLocalizedText(locale, story.title, story.titleEn);
+  const displayDescription = pickLocalizedText(
+    locale,
+    story.description,
+    story.descriptionEn
+  );
 
   return (
     <a
@@ -57,16 +69,18 @@ export default function StoryCard({ story }: StoryCardProps) {
 
       {/* Content */}
       <h3 className="text-base font-semibold text-[#1D1D1F] mb-1.5 tracking-tight group-hover:text-[#0071E3] transition-colors duration-300">
-        {story.title}
+        {displayTitle}
       </h3>
       <p className="text-sm text-[#86868B] line-clamp-2 mb-4 leading-relaxed">
-        {story.description}
+        {displayDescription}
       </p>
 
       {/* Stats */}
       <div className="flex items-center gap-4 text-xs text-[#AEAEB2]">
         <span>
-          {branchCount} branch{branchCount !== 1 ? "es" : ""}
+          {locale === "zh"
+            ? `${branchCount} 条分支`
+            : `${branchCount} branch${branchCount !== 1 ? "es" : ""}`}
         </span>
         <span className="text-[#D2D2D7]">&middot;</span>
         <span>{totalFunding.toLocaleString()} uSTX</span>

@@ -59,7 +59,8 @@ export async function POST(
   const result = await verifyPayment(
     req,
     branch.votePrice,
-    `/api/branches/${branchId}/vote`
+    `/api/branches/${branchId}/vote`,
+    `Vote for "${branch.title}" - ${branch.votePrice} microSTX`
   );
 
   if (!result.valid) {

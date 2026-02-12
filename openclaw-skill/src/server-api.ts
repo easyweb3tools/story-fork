@@ -31,9 +31,18 @@ export async function getStoryBranches(storyId: string): Promise<Branch[]> {
 
 export async function createStory(data: {
   title: string;
+  titleEn?: string;
   description: string;
+  descriptionEn?: string;
   genre: string;
-  rootBranch: { title: string; content: string; summary: string };
+  rootBranch: {
+    title: string;
+    titleEn?: string;
+    content: string;
+    contentEn?: string;
+    summary: string;
+    summaryEn?: string;
+  };
 }): Promise<Story> {
   return apiFetch("/api/stories", {
     method: "POST",
@@ -45,8 +54,11 @@ export async function createBranch(data: {
   storyId: string;
   parentId: string;
   title: string;
+  titleEn?: string;
   content: string;
+  contentEn?: string;
   summary: string;
+  summaryEn?: string;
   prompt?: string;
 }): Promise<Branch> {
   return apiFetch("/api/branches", {

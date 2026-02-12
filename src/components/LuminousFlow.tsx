@@ -3,12 +3,14 @@
 import { BranchNode as BranchNodeType } from "@/lib/types";
 import BranchNode from "./BranchNode";
 import { useCallback, useMemo } from "react";
+import type { Locale } from "@/lib/i18n";
 
 interface LuminousFlowProps {
   branches: BranchNodeType[];
   onRead: (branchId: string) => void;
   onVote: (branchId: string) => void;
   revealedBranches: Set<string>;
+  locale: Locale;
 }
 
 export default function LuminousFlow({
@@ -16,6 +18,7 @@ export default function LuminousFlow({
   onRead,
   onVote,
   revealedBranches,
+  locale,
 }: LuminousFlowProps) {
   // Calculate max funding per depth level for relative sizing
   const maxFundingByParent = useMemo(() => {
@@ -57,6 +60,7 @@ export default function LuminousFlow({
             onRead={onRead}
             onVote={onVote}
             isRevealed={revealedBranches.has(node.id) || node.depth === 0}
+            locale={locale}
           />
 
           {/* Children */}
@@ -92,7 +96,7 @@ export default function LuminousFlow({
         </div>
       );
     },
-    [maxFundingByParent, onRead, onVote, revealedBranches]
+    [locale, maxFundingByParent, onRead, onVote, revealedBranches]
   );
 
   return (

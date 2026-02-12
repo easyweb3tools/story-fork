@@ -10,7 +10,7 @@ export interface WalletAccount {
 }
 
 export interface SignedPaymentPayload {
-  x402Version: 2;
+  x402Version: 1;
   accepted: {
     scheme: string;
     network: string;
@@ -179,7 +179,7 @@ export async function signPayment(
   }
 
   return {
-    x402Version: 2,
+    x402Version: 1,
     accepted: {
       scheme: paymentRequirements.scheme,
       network: paymentRequirements.network,

@@ -2,6 +2,8 @@
 
 import { BranchNode as BranchNodeType } from "@/lib/types";
 import { useState } from "react";
+import type { Locale } from "@/lib/i18n";
+import { pickLocalizedText } from "@/lib/i18n";
 
 interface BranchNodeProps {
   node: BranchNodeType;
@@ -9,6 +11,7 @@ interface BranchNodeProps {
   onRead: (branchId: string) => void;
   onVote: (branchId: string) => void;
   isRevealed: boolean;
+  locale: Locale;
 }
 
 export default function BranchNode({
@@ -17,10 +20,14 @@ export default function BranchNode({
   onRead,
   onVote,
   isRevealed,
+  locale,
 }: BranchNodeProps) {
   const [expanded, setExpanded] = useState(false);
   const funding = Number(node.totalFunding);
   const fundingRatio = maxSiblingFunding > 0 ? funding / maxSiblingFunding : 0;
+  const title = pickLocalizedText(locale, node.title, node.titleEn);
+  const content = pickLocalizedText(locale, node.content, node.contentEn);
+  const summary = pickLocalizedText(locale, node.summary, node.summaryEn);
 
   return (
     <div
@@ -43,7 +50,7 @@ export default function BranchNode({
 
       {/* Title */}
       <h3 className="text-sm font-semibold text-[#1D1D1F] mb-1.5 truncate tracking-tight">
-        {node.title}
+        {title}
       </h3>
 
       {/* Summary or locked state */}
@@ -54,22 +61,28 @@ export default function BranchNode({
               expanded ? "" : "line-clamp-3"
             }`}
           >
-            {node.content}
+            {content}
           </p>
-          {node.content.length > 150 && (
+          {content.length > 150 && (
             <button
               onClick={() => setExpanded(!expanded)}
               className="text-[11px] text-[#0071E3] hover:text-[#0077ED] font-medium mb-2 transition-colors"
             >
-              {expanded ? "Show less" : "Read more"}
+              {expanded
+                ? locale === "zh"
+                  ? "收起"
+                  : "Show less"
+                : locale === "zh"
+                  ? "展开"
+                  : "Read more"}
             </button>
           )}
         </div>
       ) : (
         <div className="mb-2">
-          {node.summary && (
+          {summary && (
             <p className="text-xs text-[#AEAEB2] italic mb-2 line-clamp-2 leading-relaxed">
-              {node.summary}
+              {summary}
             </p>
           )}
           <button
@@ -79,7 +92,7 @@ export default function BranchNode({
               text-white transition-all duration-200
               active:scale-[0.97]"
           >
-            Read ({node.readPrice} uSTX)
+            {locale === "zh" ? "阅读" : "Read"} ({node.readPrice} uSTX)
           </button>
         </div>
       )}
@@ -91,7 +104,9 @@ export default function BranchNode({
             {funding.toLocaleString()} uSTX
           </span>
           <span className="text-[10px] text-[#AEAEB2] font-medium">
-            {node.voteCount} vote{node.voteCount !== 1 ? "s" : ""}
+            {locale === "zh"
+              ? `${node.voteCount} 票`
+              : `${node.voteCount} vote${node.voteCount !== 1 ? "s" : ""}`}
           </span>
         </div>
         <div className="w-full h-1 bg-[#E8E8ED] rounded-full overflow-hidden">
@@ -114,7 +129,7 @@ export default function BranchNode({
             transition-all duration-200
             active:scale-[0.97]"
         >
-          Vote ({node.votePrice} uSTX)
+          {locale === "zh" ? "投票" : "Vote"} ({node.votePrice} uSTX)
         </button>
       )}
 

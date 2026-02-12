@@ -10,7 +10,9 @@ datasource db {
 model Story {
   id          String    @id @default(uuid())
   title       String
+  titleEn     String?
   description String
+  descriptionEn String?
   genre       String    @default("fantasy")
   coverImage  String?
   status      String    @default("active")
@@ -28,8 +30,11 @@ model Branch {
   children      Branch[]  @relation("BranchTree")
 
   title         String
+  titleEn       String?
   content       String
+  contentEn     String?
   summary       String?
+  summaryEn     String?
 
   depth         Int       @default(0)
   orderIndex    Int       @default(0)

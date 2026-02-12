@@ -1,7 +1,9 @@
 export interface StoryWithBranches {
   id: string;
   title: string;
+  titleEn: string | null;
   description: string;
+  descriptionEn: string | null;
   genre: string;
   coverImage: string | null;
   status: string;
@@ -15,8 +17,11 @@ export interface BranchNode {
   storyId: string;
   parentId: string | null;
   title: string;
+  titleEn: string | null;
   content: string;
+  contentEn: string | null;
   summary: string | null;
+  summaryEn: string | null;
   depth: number;
   orderIndex: number;
   readPrice: number;
@@ -43,13 +48,18 @@ export interface PaymentRequirements {
 
 export interface CreateStoryInput {
   title: string;
+  titleEn?: string;
   description: string;
+  descriptionEn?: string;
   genre?: string;
   coverImage?: string;
   rootBranch: {
     title: string;
+    titleEn?: string;
     content: string;
+    contentEn?: string;
     summary?: string;
+    summaryEn?: string;
   };
 }
 
@@ -57,8 +67,11 @@ export interface CreateBranchInput {
   storyId: string;
   parentId: string;
   title: string;
+  titleEn?: string;
   content: string;
+  contentEn?: string;
   summary?: string;
+  summaryEn?: string;
   generatedBy?: string;
   prompt?: string;
 }

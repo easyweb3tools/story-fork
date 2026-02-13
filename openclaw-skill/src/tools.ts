@@ -53,7 +53,72 @@ type BranchOption = {
 
 type Direction = "freedom" | "power";
 
-function nextChapterNumber(leaf: Branch): number {
+function chineseNumeralToInt(raw: string): number | null {
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) return Number(raw);
+
+  const map: Record<string, number> = {
+    零: 0,
+    一: 1,
+    二: 2,
+    两: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+  };
+
+  const text = raw.trim();
+  if (text === "十") return 10;
+
+  const tenIdx = text.indexOf("十");
+  if (tenIdx >= 0) {
+    const left = text.slice(0, tenIdx);
+    const right = text.slice(tenIdx + 1);
+    const leftNum = left ? map[left] : 1;
+    const rightNum = right ? map[right] : 0;
+    if (leftNum === undefined || rightNum === undefined) return null;
+    return leftNum * 10 + rightNum;
+  }
+
+  const allDigits = [...text].map((ch) => map[ch]);
+  if (allDigits.some((n) => n === undefined)) return null;
+  return Number(allDigits.join(""));
+}
+
+function parseChapterNumberFromTitle(title: string | null | undefined): number | null {
+  if (!title) return null;
+  const zh = title.match(/^第([一二两三四五六七八九十零\d]+)章[：:]/u);
+  if (zh) {
+    return chineseNumeralToInt(zh[1]);
+  }
+
+  const en = title.match(/^chapter\s*(\d+)\s*[：:]/iu);
+  if (en) {
+    return Number(en[1]);
+  }
+
+  return null;
+}
+
+function nextChapterNumber(leaf: Branch, pathToLeaf?: Branch[]): number {
+  // Most robust source: actual path depth from parent chain.
+  if (pathToLeaf && pathToLeaf.length > 0) {
+    return pathToLeaf.length + 1;
+  }
+
+  // Fallback: parse current chapter number from leaf title.
+  const parsed =
+    parseChapterNumberFromTitle(leaf.title) ??
+    parseChapterNumberFromTitle(leaf.titleEn);
+  if (parsed && Number.isFinite(parsed)) {
+    return parsed + 1;
+  }
+
+  // Last fallback: schema depth.
   return leaf.depth + 2;
 }
 
@@ -145,8 +210,12 @@ function prependDirectionSummaryEn(summary: string, direction: Direction): strin
   return `Sovereign Takeover: ${clean || "Seize the key and rebuild power order."}`;
 }
 
-function normalizeBranchOptionsForFork(options: BranchOption[], leaf: Branch): BranchOption[] {
-  const chapterNo = nextChapterNumber(leaf);
+function normalizeBranchOptionsForFork(
+  options: BranchOption[],
+  leaf: Branch,
+  pathToLeaf?: Branch[]
+): BranchOption[] {
+  const chapterNo = nextChapterNumber(leaf, pathToLeaf);
   const directions: Direction[] = ["freedom", "power"];
 
   return directions.map((direction, idx) => {
@@ -425,12 +494,13 @@ function hasPaidVoteSignal(leaf: Branch): boolean {
 async function generateBranchOptionsWithLLM(
   story: Story,
   leaf: Branch,
-  canonPath: Branch[]
+  canonPath: Branch[],
+  pathToLeaf?: Branch[]
 ): Promise<BranchOption[]> {
   const guidelines = await loadSkillGuidelines();
   const isSatoshiStory = story.title.includes("中本聪的私钥");
   const branchCount = 2;
-  const chapterNo = nextChapterNumber(leaf);
+  const chapterNo = nextChapterNumber(leaf, pathToLeaf);
   const contextText = buildNarrativeContext(canonPath);
   const specialContext = isSatoshiStory
     ? `
@@ -521,7 +591,11 @@ Generate ${branchCount} distinct next branches. Return JSON array only:
   console.log(`[LLM] Raw response for "${leaf.title}":\n${trimText(output, 2000)}`);
 
   const parsed = extractJsonArray(output);
-  const options = normalizeBranchOptionsForFork(sanitizeBranchOptions(parsed), leaf);
+  const options = normalizeBranchOptionsForFork(
+    sanitizeBranchOptions(parsed),
+    leaf,
+    pathToLeaf
+  );
   if (options.length === 0) {
     throw new Error("No valid branch options parsed from LLM output");
   }
@@ -602,11 +676,17 @@ async function run() {
             continue;
           }
 
+          const pathToLeaf = tracePathToLeaf(leaf, branchMap);
           const canonPath = traceCanonPath(leaf, branchMap);
           let options: BranchOption[] = [];
 
           try {
-            options = await generateBranchOptionsWithLLM(story, leaf, canonPath);
+            options = await generateBranchOptionsWithLLM(
+              story,
+              leaf,
+              canonPath,
+              pathToLeaf
+            );
             console.log(
               `  Generated ${options.length} LLM branches for "${leaf.title}"`
             );
@@ -618,7 +698,7 @@ async function run() {
             options = generateFallbackBranchOptions(leaf, story.title);
           }
 
-          options = normalizeBranchOptionsForFork(options, leaf);
+          options = normalizeBranchOptionsForFork(options, leaf, pathToLeaf);
 
           console.log(
             `  Generating ${options.length} branches for "${leaf.title}"`

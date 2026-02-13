@@ -1,0 +1,24 @@
+{
+  "name": "story-fork-demo-video",
+  "version": "1.0.0",
+  "description": "Story-Fork demo video for x402 Stacks Challenge hackathon",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts StoryForkDemo out/story-fork-demo.mp4",
+    "preview": "remotion preview src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@remotion/bundler": "^4.0.421",
+    "@remotion/cli": "^4.0.421",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "remotion": "^4.0.421",
+    "typescript": "^5.9.3"
+  }
+}
